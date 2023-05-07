@@ -5,17 +5,29 @@ PROJECT_NAME=llmchain
 VERSION=$(shell git describe --tags | sed 's/\(.*\)-.*/\1/')
 BUILD_DATE=$(shell date -u '+%Y-%m-%d_%I:%M:%S%p')
 BUILD_HASH=$(shell git rev-parse HEAD)
-LDFLAGS="-X github.com/cxbooks/cxbooks.buildstamp=${BUILD_DATE} -X github.com/cxbooks/cxbooks.githash=${BUILD_HASH} -X github.com/cxbooks/cxbooks.VERSION=${VERSION} -s -w"
 DESTDIR=${PROJECT_PATH}/build
 VERSION=v0.0.2
+
+ifeq ($(BUILD_TYPE), "generic")
+	GENERIC_PREFIX:=generic-
+else
+	GENERIC_PREFIX:=
+endif
 
 
 .PHONY: all
 
 
-all : cxbooks
+all : llmchain
 
+
+llamacpp:
+	git submodule update --init --recursive --depth 1
+
+llamacpp/libbinding.a: llamacpp 
+	$(MAKE) -C llms/llamacpp $(GENERIC_PREFIX)libbinding.a
 
 clean:
 	rm -rf ${DESTDIR}
-	docker rmi cxbooks:${VERSION}
+	docker rmi llmchain:${VERSION}
+
