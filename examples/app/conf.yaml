@@ -1,0 +1,8 @@
+# http server listen address
+api_addr: '0.0.0.0:8080'
+
+model_path: './models'
+
+log_level: 'debug'
+
+log_dir: 'stdout'

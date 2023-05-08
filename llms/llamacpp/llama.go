@@ -10,12 +10,12 @@ import "C"
 import (
 	"context"
 	"fmt"
-	"os"
 	"strings"
 	"sync"
 	"unsafe"
 
 	"github.com/exppii/llmchain/llms"
+	"github.com/exppii/llmchain/utils"
 )
 
 type LLaMACpp struct {
@@ -24,14 +24,18 @@ type LLaMACpp struct {
 	// Threads   int
 	embeddings bool
 	state      unsafe.Pointer
+
+	// This is still needed, see: https://github.com/ggerganov/llama.cpp/discussions/784
+	mu sync.Mutex
 }
 
 var _ llms.LLM = &LLaMACpp{}
 
 func New(modelPath string, opts ...ModelOption) (*LLaMACpp, error) {
 
-	if _, err := os.Stat(modelPath); err != nil {
-		return nil, fmt.Errorf("model path not exists")
+	// Check if we already have a loaded model
+	if !utils.PathExists(modelPath) {
+		return nil, fmt.Errorf("model does not exist")
 	}
 
 	mOpts := NewModelOptions(opts...)

@@ -3,8 +3,12 @@ package llms
 
 import "context"
 
+type Callback func(token string) bool
+
 // LLM is a langchaingo Large Language Model.
 type LLM interface {
+	// Chat(ctx context.Context, prompt string, tokenCallback func(string) bool)
+
 	Call(ctx context.Context, prompt string, options ...CallOption) (string, error)
 	// Generate(ctx context.Context, prompts []string, options ...CallOption) ([]*Generation, error)
 }
