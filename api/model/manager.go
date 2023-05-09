@@ -2,11 +2,12 @@ package model
 
 import (
 	"fmt"
-	"text/template"
 
+	"github.com/exppii/llmchain/api/conf"
 	"github.com/exppii/llmchain/llms"
 	"github.com/exppii/llmchain/llms/llamacpp"
 	"github.com/exppii/llmchain/llms/openai"
+	"github.com/exppii/llmchain/prompts"
 )
 
 // Manager LLM model manager
@@ -16,24 +17,37 @@ type Manager struct {
 
 	loadedModels map[string]llms.LLM
 
-	promptsTemplates map[string]*template.Template
+	// promptsTemplates map[string]*template.Template
+
+	promptsTemplates *prompts.Template
 }
 
-func NewModelManager(modelPath string) *Manager {
+func NewModelManager(cf *conf.Config) *Manager {
+
 	return &Manager{
-		ModelPath: modelPath,
+		ModelPath: cf.ModelPath,
 
 		loadedModels: map[string]llms.LLM{},
 
-		promptsTemplates: make(map[string]*template.Template),
+		promptsTemplates: prompts.NewTemplate(cf.ModelPath),
 	}
 }
 
-func (m *Manager) GetModel(modelName string) (llms.LLM, bool) {
+func (m *Manager) GetModel(modelName string) (llms.LLM, error) {
 
 	model, exists := m.loadedModels[modelName]
+	if !exists {
+		return nil, fmt.Errorf("model %s not found", modelName)
+	}
 
-	return model, exists
+	return model, nil
+
+}
+
+func (m *Manager) GetPrompt() *prompts.Template {
+
+	return m.promptsTemplates
+
 }
 
 func (m *Manager) LoadLLaMACpp(modelName string, opts ...llamacpp.ModelOption) (*llamacpp.LLaMACpp, error) {
@@ -64,9 +78,11 @@ func (m *Manager) GreedyLoad(modelFile string, llamaOpts []llamacpp.ModelOption,
 		fmt.Printf(`could not load llama model: `, err.Error())
 	}
 
-	if model, err := m.LoadOpenAI(modelFile); err == nil {
+	if _, err := m.LoadOpenAI(modelFile); err == nil {
 		// updateModels(model)
-		return model, nil
+		//TODO
+		// return model, nil
+		return nil, fmt.Errorf("no avail  model - all backends returned")
 	} else {
 		fmt.Printf(`could not load openai model: `, err.Error())
 	}

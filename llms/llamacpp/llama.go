@@ -19,6 +19,8 @@ import (
 )
 
 type LLaMACpp struct {
+	options llms.ModelOptions
+
 	// Streaming bool
 	// ModelPath string
 	// Threads   int
@@ -57,6 +59,89 @@ func (l *LLaMACpp) Free() {
 	C.llama_free_model(l.state)
 }
 
+// SupportStream  LLaMACpp support stream
+func (l *LLaMACpp) SupportStream() bool {
+	return true
+}
+
+func (l *LLaMACpp) InferenceFn(input string, payload *llms.Payload, tokenCallback func(string) bool) func() (string, error) {
+
+	return func() (string, error) {
+
+		if tokenCallback != nil {
+			l.SetTokenCallback(tokenCallback)
+		}
+
+		predictOptions := l.BuildPredictOptions(payload)
+
+		str, er := l.Predict(
+			input,
+			predictOptions...,
+		)
+		// Seems that if we don't free the callback explicitly we leave functions registered (that might try to send on closed channels)
+		// For instance otherwise the API returns: {"error":{"code":500,"message":"send on closed channel","type":""}}
+		// after a stream event has occurred
+		l.SetTokenCallback(nil)
+		return str, er
+	}
+
+}
+
+func (l *LLaMACpp) BuildPredictOptions(c *llms.Payload) []PredictOption {
+	// Generate the prediction using the language model
+	predictOptions := []PredictOption{
+		WithTemperature(c.Temperature),
+		WithTopP(c.TopP),
+		WithTopK(c.TopK),
+		WithTokens(c.Maxtokens),
+		WithThreads(c.Threads),
+	}
+
+	if c.Mirostat != 0 {
+		predictOptions = append(predictOptions, WithMirostat(c.Mirostat))
+	}
+
+	if c.MirostatETA != 0 {
+		predictOptions = append(predictOptions, WithMirostatETA(c.MirostatETA))
+	}
+
+	if c.MirostatTAU != 0 {
+		predictOptions = append(predictOptions, WithMirostatTAU(c.MirostatTAU))
+	}
+
+	if c.Debug {
+		predictOptions = append(predictOptions, Debug)
+	}
+
+	predictOptions = append(predictOptions, WithStopWords(c.StopWords...))
+
+	if c.RepeatPenalty != 0 {
+		predictOptions = append(predictOptions, WithPenalty(c.RepeatPenalty))
+	}
+
+	if c.Keep != 0 {
+		predictOptions = append(predictOptions, WithNKeep(c.Keep))
+	}
+
+	if c.Batch != 0 {
+		predictOptions = append(predictOptions, WithBatch(c.Batch))
+	}
+
+	if c.F16 {
+		predictOptions = append(predictOptions, EnableF16KV)
+	}
+
+	if c.IgnoreEOS {
+		predictOptions = append(predictOptions, IgnoreEOS)
+	}
+
+	if c.Seed != 0 {
+		predictOptions = append(predictOptions, WithSeed(c.Seed))
+	}
+
+	return predictOptions
+}
+
 // Embeddings
 func (l *LLaMACpp) Embeddings(text string, opts ...PredictOption) ([]float32, error) {
 	if !l.embeddings {
@@ -93,6 +178,16 @@ func (l *LLaMACpp) Embeddings(text string, opts ...PredictOption) ([]float32, er
 	}
 
 	return floats, nil
+}
+
+func (l *LLaMACpp) MergePayload(req *llms.OpenAIRequest) *llms.Payload {
+
+	// payload := llms.NewPayload(opt)
+	//TODO copy
+	m := l.options
+
+	return m.Override(req)
+
 }
 
 func (l *LLaMACpp) Predict(text string, opts ...PredictOption) (string, error) {
@@ -194,7 +289,7 @@ func setCallback(statePtr unsafe.Pointer, callback func(string) bool) {
 	}
 }
 
-func (l *LLaMACpp) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
+func (l *LLaMACpp) Call(ctx context.Context, prompt string) (string, error) {
 
 	ret, err := l.Predict(prompt, Debug, WithTokenCallback(func(token string) bool {
 		fmt.Print(token)

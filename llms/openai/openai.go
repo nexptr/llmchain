@@ -1,15 +1,11 @@
 package openai
 
-import (
-	"context"
-
-	"github.com/exppii/llmchain/llms"
-)
+import "github.com/exppii/llmchain/llms"
 
 type OpenAI struct {
 }
 
-func (l *OpenAI) Call(ctx context.Context, prompt string, options ...llms.CallOption) (string, error) {
+func (l *OpenAI) Options() llms.ModelOptions {
 	panic(`TODO`)
 }
 

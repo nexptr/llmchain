@@ -3,6 +3,27 @@ api_addr: '0.0.0.0:8080'
 
 model_path: './models'
 
+prompt_path: './prompts/*.tmpl'
+
 log_level: 'debug'
 
 log_dir: 'stdout'
+
+
+model_options:
+- name: ggml-llama-7b
+  parameters:
+    model: testmodel
+    top_p: 80
+    top_k: 0.9
+    temperature: 0.1
+  context_size: 10
+  stopwords:
+  - "HUMAN:"
+  - "### Response:"
+  roles:
+    user: "HUMAN:"
+    system: "GPT:"
+  template:
+    completion: completion
+    chat: ggml-llama-7b

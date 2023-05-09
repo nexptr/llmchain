@@ -6,16 +6,16 @@ import (
 
 	"github.com/exppii/llmchain"
 	"github.com/exppii/llmchain/api/conf"
+	"github.com/exppii/llmchain/api/model"
 	"github.com/gin-gonic/gin"
 
 	"go.uber.org/zap/zapcore"
 )
 
 type App struct {
-	srv    *http.Server //http server
-	router *gin.Engine  //http 路由表
+	mng *model.Manager
 
-	cf *conf.Config
+	srv *http.Server //http server
 
 	ctx context.Context
 }
@@ -23,8 +23,20 @@ type App struct {
 // NewAPPWithConfig with config
 func NewAPPWithConfig(cf *conf.Config) *App {
 
+	LogI(`llmchain version: `, llmchain.VERSION)
+	LogI(`git commit hash: `, llmchain.GitHash)
+	LogI(`UTC build time: `, llmchain.BuildStamp)
+	LogI(`HTTP server address: `, cf.APIAddr)
+
+	manager := model.NewModelManager(cf)
+
+	router := initGinRoute(manager, cf.LogLevel)
+
+	srv := &http.Server{Addr: cf.APIAddr, Handler: router}
+
 	return &App{
-		cf: cf,
+		mng: manager,
+		srv: srv,
 	}
 
 }
@@ -33,20 +45,8 @@ func NewAPPWithConfig(cf *conf.Config) *App {
 func (m *App) StartContext(ctx context.Context) error {
 
 	m.ctx = ctx
-	//加载路由
-	m.router = initGinRoute(m.cf.LogLevel)
-
-	LogI(`llmchain version: `, llmchain.VERSION)
-	LogI(`git commit hash: `, llmchain.GitHash)
-	LogI(`utc build time: `, llmchain.BuildStamp)
-
 	go func() {
 
-		//这样设置默认可能是不安全的，因为头部字段可以伪造，需求前置的反向代理的xff 确保是对的
-		m.router.SetTrustedProxies([]string{"0.0.0.0", "::"})
-
-		m.srv = &http.Server{Addr: m.cf.APIAddr, Handler: m.router}
-		LogI(`start HTTP server：`, m.cf.APIAddr)
 		m.srv.ListenAndServe()
 
 	}()
@@ -64,7 +64,7 @@ func (m *App) GracefulStop() {
 
 }
 
-func initGinRoute(level Level) *gin.Engine {
+func initGinRoute(manager *model.Manager, level Level) *gin.Engine {
 
 	if level == zapcore.DebugLevel {
 		gin.SetMode(gin.DebugMode)
@@ -77,24 +77,27 @@ func initGinRoute(level Level) *gin.Engine {
 	router := gin.Default()
 
 	// openAI compatible API endpoint
-	router.POST("/v1/chat/completions", chatEndpointHandler)
-	router.POST("/chat/completions", chatEndpointHandler)
+	router.POST("/v1/chat/completions", chatEndpointHandler(manager))
+	router.POST("/chat/completions", chatEndpointHandler(manager))
 
-	router.POST("/v1/edits", editEndpointHandler)
-	router.POST("/edits", editEndpointHandler)
+	router.POST("/v1/edits", editEndpointHandler(manager))
+	router.POST("/edits", editEndpointHandler(manager))
 
-	router.POST("/v1/completions", completionEndpointHandler)
-	router.POST("/completions", completionEndpointHandler)
+	router.POST("/v1/completions", completionEndpointHandler(manager))
+	router.POST("/completions", completionEndpointHandler(manager))
 
-	router.POST("/v1/embeddings", embeddingsEndpointHandler)
-	router.POST("/embeddings", embeddingsEndpointHandler)
+	router.POST("/v1/embeddings", embeddingsEndpointHandler(manager))
+	router.POST("/embeddings", embeddingsEndpointHandler(manager))
 
 	// /v1/engines/{engine_id}/embeddings
 
-	router.POST("/v1/engines/:model/embeddings", embeddingsEndpointHandler)
+	router.POST("/v1/engines/:model/embeddings", embeddingsEndpointHandler(manager))
 
-	router.GET("/v1/models", listModelsHandler)
-	router.GET("/models", listModelsHandler)
+	router.GET("/v1/models", listModelsHandler(manager))
+	router.GET("/models", listModelsHandler(manager))
+
+	//这样设置默认可能是不安全的，因为头部字段可以伪造，需求前置的反向代理的xff 确保是对的
+	router.SetTrustedProxies([]string{"0.0.0.0", "::"})
 
 	return router
 }
