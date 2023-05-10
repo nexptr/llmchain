@@ -11,6 +11,7 @@ import (
 	"github.com/exppii/llmchain"
 	"github.com/exppii/llmchain/api"
 	"github.com/exppii/llmchain/api/conf"
+	"github.com/exppii/llmchain/api/log"
 )
 
 var (
@@ -43,9 +44,9 @@ func main() {
 		os.Exit(1)
 	}
 
-	api.InitLog(cf.LogDir, cf.LogLevel)
+	log.Init(cf.LogDir, cf.LogLevel)
 
-	defer api.FlushLog()
+	defer log.Flush()
 
 	//open api server
 	app := api.NewAPPWithConfig(cf)

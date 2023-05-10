@@ -3,15 +3,14 @@ package prompts
 import (
 	"bytes"
 	"io"
-	"path/filepath"
 	"strings"
 	"text/template"
 )
 
 type TemplateConfig struct {
-	Completion string `yaml:"completion"`
-	Chat       string `yaml:"chat"`
-	Edit       string `yaml:"edit"`
+	Completion string `json:"completion" yaml:"completion"`
+	Chat       string `json:"chat" yaml:"chat"`
+	Edit       string `json:"edit" yaml:"edit"`
 }
 
 type Template struct {
@@ -30,9 +29,7 @@ func NewTemplate(path string) *Template {
 		path = "prompts/*.tmpl"
 	}
 
-	pattern := filepath.Join(path, path)
-
-	p.tmpl = template.Must(template.New("").Funcs(p.funcMap).ParseGlob(pattern))
+	p.tmpl = template.Must(template.New("").Funcs(p.funcMap).ParseGlob(path))
 
 	return p
 }

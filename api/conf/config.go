@@ -22,7 +22,7 @@ type Config struct {
 
 	LogDir string `yaml:"log_dir"`
 
-	ModelOptions map[string]llms.ModelOptions `yaml:"model_options"`
+	ModelOptions []llms.ModelOptions `yaml:"model_options"`
 }
 
 func defaultConfig() *Config {

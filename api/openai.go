@@ -9,3 +9,8 @@ func (r *Response) WithMessage(err string) *Response {
 	r.Message = err
 	return r
 }
+
+type OpenAIModel struct {
+	ID     string `json:"id"`
+	Object string `json:"object"`
+}

@@ -7,6 +7,7 @@ import (
 
 	"github.com/exppii/llmchain"
 	"github.com/exppii/llmchain/api/conf"
+	"github.com/exppii/llmchain/api/log"
 	"github.com/exppii/llmchain/api/model"
 	"github.com/gin-gonic/gin"
 
@@ -14,6 +15,10 @@ import (
 )
 
 type App struct {
+	addr string
+
+	logLevel log.Level
+
 	mng *model.Manager
 
 	srv *http.Server //http server
@@ -24,20 +29,17 @@ type App struct {
 // NewAPPWithConfig with config
 func NewAPPWithConfig(cf *conf.Config) *App {
 
-	LogI(`llmchain version: `, llmchain.VERSION)
-	LogI(`git commit hash: `, llmchain.GitHash)
-	LogI(`UTC build time: `, llmchain.BuildStamp)
-	LogI(`HTTP server address: `, cf.APIAddr)
+	log.I(`llmchain version: `, llmchain.VERSION)
+	log.I(`git commit hash: `, llmchain.GitHash)
+	log.I(`UTC build time: `, llmchain.BuildStamp)
 
 	manager := model.NewModelManager(cf)
 
-	router := initGinRoute(manager, cf.LogLevel)
-
-	srv := &http.Server{Addr: cf.APIAddr, Handler: router}
-
 	return &App{
-		mng: manager,
-		srv: srv,
+		mng:      manager,
+		addr:     cf.APIAddr,
+		logLevel: cf.LogLevel,
+		// srv: srv,
 	}
 
 }
@@ -51,9 +53,16 @@ func (m *App) StartContext(ctx context.Context) error {
 	// goroutine is used here, so we can use ctrl+c to terminate it
 	go func() {
 		if err := m.mng.Load(); err != nil {
-			LogE(`load model failed: `, err.Error())
+			log.E(`load model failed: `, err.Error())
 			os.Exit(1)
 		}
+
+		log.I(`init http router...`)
+
+		router := m.initGinRoute()
+
+		m.srv = &http.Server{Addr: m.addr, Handler: router}
+		log.I(`HTTP server address: `, m.addr)
 		m.srv.ListenAndServe()
 
 	}()
@@ -65,15 +74,15 @@ func (m *App) StartContext(ctx context.Context) error {
 // GracefulStop 退出，每个模块实现stop
 func (m *App) GracefulStop() {
 	if m.srv != nil {
-		LogD(`quit http server...`)
+		log.D(`quit http server...`)
 		m.srv.Shutdown(m.ctx)
 	}
 
 }
 
-func initGinRoute(manager *model.Manager, level Level) *gin.Engine {
+func (m *App) initGinRoute() *gin.Engine {
 
-	if level == zapcore.DebugLevel {
+	if m.logLevel == zapcore.DebugLevel {
 		gin.SetMode(gin.DebugMode)
 	} else {
 		gin.SetMode(gin.ReleaseMode)
@@ -84,24 +93,24 @@ func initGinRoute(manager *model.Manager, level Level) *gin.Engine {
 	router := gin.Default()
 
 	// openAI compatible API endpoint
-	router.POST("/v1/chat/completions", chatEndpointHandler(manager))
-	router.POST("/chat/completions", chatEndpointHandler(manager))
+	router.POST("/v1/chat/completions", chatEndpointHandler(m.mng))
+	router.POST("/chat/completions", chatEndpointHandler(m.mng))
 
-	router.POST("/v1/edits", editEndpointHandler(manager))
-	router.POST("/edits", editEndpointHandler(manager))
+	router.POST("/v1/edits", editEndpointHandler(m.mng))
+	router.POST("/edits", editEndpointHandler(m.mng))
 
-	router.POST("/v1/completions", completionEndpointHandler(manager))
-	router.POST("/completions", completionEndpointHandler(manager))
+	router.POST("/v1/completions", completionEndpointHandler(m.mng))
+	router.POST("/completions", completionEndpointHandler(m.mng))
 
-	router.POST("/v1/embeddings", embeddingsEndpointHandler(manager))
-	router.POST("/embeddings", embeddingsEndpointHandler(manager))
+	router.POST("/v1/embeddings", embeddingsEndpointHandler(m.mng))
+	router.POST("/embeddings", embeddingsEndpointHandler(m.mng))
 
 	// /v1/engines/{engine_id}/embeddings
 
-	router.POST("/v1/engines/:model/embeddings", embeddingsEndpointHandler(manager))
+	router.POST("/v1/engines/:model/embeddings", embeddingsEndpointHandler(m.mng))
 
-	router.GET("/v1/models", listModelsHandler(manager))
-	router.GET("/models", listModelsHandler(manager))
+	router.GET("/v1/models", listModelsHandler(m.mng))
+	router.GET("/models", listModelsHandler(m.mng))
 
 	//这样设置默认可能是不安全的，因为头部字段可以伪造，需求前置的反向代理的xff 确保是对的
 	router.SetTrustedProxies([]string{"0.0.0.0", "::"})

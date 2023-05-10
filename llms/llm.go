@@ -5,6 +5,7 @@ type Callback func(token string) bool
 
 // LLM is a langchaingo Large Language Model.
 type LLM interface {
+	Name() string
 
 	//MergePayload Merge OpenAI like request to modelOptions, this func must care about multi-thread condition
 	MergeModelOptions(req *OpenAIRequest) *ModelOptions

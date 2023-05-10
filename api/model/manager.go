@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	"github.com/exppii/llmchain/api/conf"
+	"github.com/exppii/llmchain/api/log"
 	"github.com/exppii/llmchain/llms"
 	"github.com/exppii/llmchain/llms/llamacpp"
 	"github.com/exppii/llmchain/llms/openai"
@@ -53,8 +54,9 @@ func (m *Manager) Load() error {
 				return err
 			}
 			m.loadedModels[o.Name] = llm
-
+			log.I(`loaded llama.cpp from `, o.ModelPath)
 		default:
+
 			return fmt.Errorf(`model: %s not support`, o.Name)
 		}
 
@@ -86,8 +88,19 @@ func (m *Manager) GetPrompt() *prompts.Template {
 
 }
 
-func (m *Manager) LoadLLaMACpp(opts llms.ModelOptions) (*llamacpp.LLaMACpp, error) {
+func (m *Manager) ListModels() []string {
+	ret := make([]string, len(m.loadedModels))
 
+	i := 0
+	for k := range m.loadedModels {
+		ret[i] = k
+		i++
+	}
+	return ret
+}
+
+func (m *Manager) LoadLLaMACpp(opts llms.ModelOptions) (*llamacpp.LLaMACpp, error) {
+	log.I(`loading model: `, opts.Model, ` with path: `, opts.ModelPath, `...`)
 	return llamacpp.New(opts.ModelPath)
 
 }

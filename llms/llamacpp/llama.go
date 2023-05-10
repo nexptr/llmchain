@@ -37,7 +37,7 @@ func New(modelPath string, opts ...llms.ModelOption) (*LLaMACpp, error) {
 
 	// Check if we already have a loaded model
 	if !utils.PathExists(modelPath) {
-		return nil, fmt.Errorf("model does not exist")
+		return nil, fmt.Errorf("model does not exist: %s", modelPath)
 	}
 
 	mOpts := defaultLLamaModelOptions(opts...)
@@ -64,6 +64,10 @@ func (l *LLaMACpp) SupportStream() bool {
 	return true
 }
 
+// SupportStream  LLaMACpp support stream
+func (l *LLaMACpp) Name() string {
+	return l.options.Name
+}
 func (l *LLaMACpp) InferenceFn(input string, predict *llms.ModelOptions, tokenCallback func(string) bool) func() (string, error) {
 
 	return func() (string, error) {

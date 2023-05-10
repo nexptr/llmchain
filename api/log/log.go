@@ -1,4 +1,4 @@
-package api
+package log
 
 import (
 	"os"
@@ -11,25 +11,29 @@ import (
 
 type Level = zapcore.Level
 
-// global zap logger
-var globalLog *zap.SugaredLogger
+type Logger struct {
+	*zap.SugaredLogger
+}
 
-func InitLog(dir string, level zapcore.Level) {
+// global zap logger
+var globalLog *Logger
+
+func Init(dir string, level zapcore.Level) {
 
 	if globalLog == nil {
 
 		core := zapcore.NewCore(getEncoder(false), getWriter(dir, level), level)
 
-		logger := zap.New(core, zap.AddCaller())
+		logger := zap.New(core, zap.AddCaller(), zap.AddCallerSkip(1))
 
-		globalLog = logger.Sugar()
+		globalLog = &Logger{logger.Sugar()}
 
 	}
 
 }
 
 // FlushLog 刷新日志,这里没有校验 globalLog 是否是 nil
-func FlushLog() {
+func Flush() {
 	if globalLog != nil {
 		globalLog.Sync()
 	}
@@ -37,27 +41,27 @@ func FlushLog() {
 }
 
 // D 刷新日志,这里没有校验 globalLog 是否是 nil
-func LogD(args ...interface{}) {
+func D(args ...interface{}) {
 	globalLog.Debug(args...)
 }
 
 // I 刷新日志,这里没有校验 globalLog 是否是 nil
-func LogI(args ...interface{}) {
+func I(args ...interface{}) {
 	globalLog.Info(args...)
 }
 
 // E 刷新日志,这里没有校验 globalLog 是否是 nil
-func LogE(args ...interface{}) {
+func E(args ...interface{}) {
 	globalLog.Error(args...)
 }
 
 // W 刷新日志,这里没有校验 globalLog 是否是 nil
-func LogW(args ...interface{}) {
+func W(args ...interface{}) {
 	globalLog.Warn(args...)
 }
 
 // F 刷新日志,这里没有校验 globalLog 是否是 nil
-func LogF(args ...interface{}) {
+func F(args ...interface{}) {
 	globalLog.Fatal(args...)
 }
 

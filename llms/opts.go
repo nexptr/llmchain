@@ -1,6 +1,8 @@
 package llms
 
 import (
+	"encoding/json"
+
 	"github.com/exppii/llmchain/prompts"
 )
 
@@ -327,6 +329,10 @@ func (m *ModelOptions) TemplatePromptStrings(t *prompts.Template) ([]string, err
 	if m.TemplateConfig.Completion != "" {
 		templateFile = m.TemplateConfig.Completion
 	}
+
+	jm, _ := json.Marshal(m)
+
+	println(`templateFile`, string(jm))
 
 	templatedInputs := []string{}
 
