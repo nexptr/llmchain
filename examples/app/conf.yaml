@@ -12,8 +12,8 @@ log_dir: 'stdout'
 
 model_options:
 - name: ggml-llama-7b
+  model_path: './models/ggml-llama-7b.bin'
   parameters:
-    model: testmodel
     top_p: 80
     top_k: 0.9
     temperature: 0.1

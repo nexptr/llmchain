@@ -8,6 +8,7 @@ import (
 	"os"
 	"runtime"
 
+	"github.com/exppii/llmchain/llms"
 	"github.com/exppii/llmchain/llms/llamacpp"
 )
 
@@ -31,10 +32,11 @@ func main() {
 		os.Exit(1)
 	}
 
-	llm, err := llamacpp.New(modelPath, llamacpp.WithContext(128), llamacpp.WithParts(-1), llamacpp.EnableEmbeddings)
+	llm, err := llamacpp.New(modelPath, llms.WithContext(128), llms.WithParts(-1), llms.EnableEmbeddings)
 	if err != nil {
 		log.Fatal(err)
 	}
+
 	ctx := context.TODO()
 
 	completion, err := llm.Call(ctx, "How many sides does a square have?")
@@ -42,6 +44,8 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	llm.Free()
 
 	fmt.Println(`completion: `, completion)
 

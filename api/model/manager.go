@@ -12,6 +12,8 @@ import (
 
 // Manager LLM model manager
 type Manager struct {
+	cf *conf.Config
+
 	//ModelPath root mode path for llms
 	ModelPath string
 
@@ -25,12 +27,46 @@ type Manager struct {
 func NewModelManager(cf *conf.Config) *Manager {
 
 	return &Manager{
-		ModelPath: cf.ModelPath,
-
+		cf:           cf,
 		loadedModels: map[string]llms.LLM{},
 
-		promptsTemplates: prompts.NewTemplate(cf.ModelPath),
+		promptsTemplates: prompts.NewTemplate(cf.PromptPath),
 	}
+}
+
+// Load using the configs in config file, load llm models to memory.
+func (m *Manager) Load() error {
+
+	for _, o := range m.cf.ModelOptions {
+
+		//load
+		modeType := llms.GetModelType(o.Name)
+
+		switch modeType {
+		case llms.ModelOpenAI:
+
+		case llms.ModelLLaMACPP:
+
+			llm, err := m.LoadLLaMACpp(o)
+			if err != nil {
+
+				return err
+			}
+			m.loadedModels[o.Name] = llm
+
+		default:
+			return fmt.Errorf(`model: %s not support`, o.Name)
+		}
+
+	}
+
+	return nil
+
+}
+
+// Free clean all model in memory
+func (m *Manager) Free() {
+	//TODO free all model
 }
 
 func (m *Manager) GetModel(modelName string) (llms.LLM, error) {
@@ -50,9 +86,9 @@ func (m *Manager) GetPrompt() *prompts.Template {
 
 }
 
-func (m *Manager) LoadLLaMACpp(modelName string, opts ...llamacpp.ModelOption) (*llamacpp.LLaMACpp, error) {
+func (m *Manager) LoadLLaMACpp(opts llms.ModelOptions) (*llamacpp.LLaMACpp, error) {
 
-	panic(`TODO`)
+	return llamacpp.New(opts.ModelPath)
 
 }
 
@@ -61,31 +97,31 @@ func (m *Manager) LoadOpenAI(modelName string, opts ...openai.ModelOption) (*ope
 	return nil, fmt.Errorf("openai llm todo")
 }
 
-func (m *Manager) GreedyLoad(modelFile string, llamaOpts []llamacpp.ModelOption, threads uint32) (llms.LLM, error) {
+// func (m *Manager) GreedyLoad(modelFile string, llamaOpts []llamacpp.ModelOption, threads uint32) (llms.LLM, error) {
 
-	model, exists := m.loadedModels[modelFile]
-	if exists {
-		// muModels.Unlock()
-		return model, nil
-	}
+// 	model, exists := m.loadedModels[modelFile]
+// 	if exists {
+// 		// muModels.Unlock()
+// 		return model, nil
+// 	}
 
-	//try
+// 	//try
 
-	if model, err := m.LoadLLaMACpp(modelFile, llamaOpts...); err == nil {
-		// updateModels(model)
-		return model, nil
-	} else {
-		fmt.Printf(`could not load llama model: `, err.Error())
-	}
+// 	if model, err := m.LoadLLaMACpp(modelFile, llamaOpts...); err == nil {
+// 		// updateModels(model)
+// 		return model, nil
+// 	} else {
+// 		fmt.Printf(`could not load llama model: `, err.Error())
+// 	}
 
-	if _, err := m.LoadOpenAI(modelFile); err == nil {
-		// updateModels(model)
-		//TODO
-		// return model, nil
-		return nil, fmt.Errorf("no avail  model - all backends returned")
-	} else {
-		fmt.Printf(`could not load openai model: `, err.Error())
-	}
+// 	if _, err := m.LoadOpenAI(modelFile); err == nil {
+// 		// updateModels(model)
+// 		//TODO
+// 		// return model, nil
+// 		return nil, fmt.Errorf("no avail  model - all backends returned")
+// 	} else {
+// 		fmt.Printf(`could not load openai model: `, err.Error())
+// 	}
 
-	return nil, fmt.Errorf("no avail  model - all backends returned")
-}
+// 	return nil, fmt.Errorf("no avail  model - all backends returned")
+// }

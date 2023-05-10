@@ -69,7 +69,7 @@ func completionEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 			return
 		}
 
-		payload := llm.MergePayload(input)
+		payload := llm.MergeModelOptions(input)
 
 		templatedInputs, err := payload.TemplatePromptStrings(manager.GetPrompt())
 

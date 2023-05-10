@@ -33,23 +33,23 @@ type LLaMACpp struct {
 
 var _ llms.LLM = &LLaMACpp{}
 
-func New(modelPath string, opts ...ModelOption) (*LLaMACpp, error) {
+func New(modelPath string, opts ...llms.ModelOption) (*LLaMACpp, error) {
 
 	// Check if we already have a loaded model
 	if !utils.PathExists(modelPath) {
 		return nil, fmt.Errorf("model does not exist")
 	}
 
-	mOpts := NewModelOptions(opts...)
+	mOpts := defaultLLamaModelOptions(opts...)
 
 	mPath := C.CString(modelPath)
 
-	result := C.load_model(mPath, C.int(mOpts.ContextSize), C.int(mOpts.Parts), C.int(mOpts.Seed), C.bool(mOpts.F16Memory), C.bool(mOpts.MLock), C.bool(mOpts.Embeddings))
+	result := C.load_model(mPath, C.int(mOpts.ContextSize), C.int(mOpts.Parts), C.int(mOpts.Seed), C.bool(mOpts.F16), C.bool(mOpts.MLock), C.bool(mOpts.Embeddings))
 	if result == nil {
 		return nil, fmt.Errorf("failed loading model")
 	}
 
-	ll := &LLaMACpp{state: result, embeddings: mOpts.Embeddings}
+	ll := &LLaMACpp{state: result, embeddings: mOpts.Embeddings, options: mOpts}
 
 	return ll, nil
 }
@@ -64,7 +64,7 @@ func (l *LLaMACpp) SupportStream() bool {
 	return true
 }
 
-func (l *LLaMACpp) InferenceFn(input string, payload *llms.Payload, tokenCallback func(string) bool) func() (string, error) {
+func (l *LLaMACpp) InferenceFn(input string, predict *llms.ModelOptions, tokenCallback func(string) bool) func() (string, error) {
 
 	return func() (string, error) {
 
@@ -72,12 +72,7 @@ func (l *LLaMACpp) InferenceFn(input string, payload *llms.Payload, tokenCallbac
 			l.SetTokenCallback(tokenCallback)
 		}
 
-		predictOptions := l.BuildPredictOptions(payload)
-
-		str, er := l.Predict(
-			input,
-			predictOptions...,
-		)
+		str, er := l.PredictWithOpts(input, predict)
 		// Seems that if we don't free the callback explicitly we leave functions registered (that might try to send on closed channels)
 		// For instance otherwise the API returns: {"error":{"code":500,"message":"send on closed channel","type":""}}
 		// after a stream event has occurred
@@ -87,89 +82,39 @@ func (l *LLaMACpp) InferenceFn(input string, payload *llms.Payload, tokenCallbac
 
 }
 
-func (l *LLaMACpp) BuildPredictOptions(c *llms.Payload) []PredictOption {
-	// Generate the prediction using the language model
-	predictOptions := []PredictOption{
-		WithTemperature(c.Temperature),
-		WithTopP(c.TopP),
-		WithTopK(c.TopK),
-		WithTokens(c.Maxtokens),
-		WithThreads(c.Threads),
-	}
-
-	if c.Mirostat != 0 {
-		predictOptions = append(predictOptions, WithMirostat(c.Mirostat))
-	}
-
-	if c.MirostatETA != 0 {
-		predictOptions = append(predictOptions, WithMirostatETA(c.MirostatETA))
-	}
-
-	if c.MirostatTAU != 0 {
-		predictOptions = append(predictOptions, WithMirostatTAU(c.MirostatTAU))
-	}
-
-	if c.Debug {
-		predictOptions = append(predictOptions, Debug)
-	}
-
-	predictOptions = append(predictOptions, WithStopWords(c.StopWords...))
-
-	if c.RepeatPenalty != 0 {
-		predictOptions = append(predictOptions, WithPenalty(c.RepeatPenalty))
-	}
-
-	if c.Keep != 0 {
-		predictOptions = append(predictOptions, WithNKeep(c.Keep))
-	}
-
-	if c.Batch != 0 {
-		predictOptions = append(predictOptions, WithBatch(c.Batch))
-	}
-
-	if c.F16 {
-		predictOptions = append(predictOptions, EnableF16KV)
-	}
-
-	if c.IgnoreEOS {
-		predictOptions = append(predictOptions, IgnoreEOS)
-	}
-
-	if c.Seed != 0 {
-		predictOptions = append(predictOptions, WithSeed(c.Seed))
-	}
-
-	return predictOptions
-}
-
 // Embeddings
-func (l *LLaMACpp) Embeddings(text string, opts ...PredictOption) ([]float32, error) {
+func (l *LLaMACpp) Embeddings(text string, opts ...llms.ModelOption) ([]float32, error) {
 	if !l.embeddings {
 		return []float32{}, fmt.Errorf("model loaded without embeddings")
 	}
 
-	po := NewPredictOptions(opts...)
+	//copy from base
+	po := l.options
+
+	for _, f := range opts {
+		f(&po)
+	}
 
 	input := C.CString(text)
-	if po.Tokens == 0 {
-		po.Tokens = 99999999
+	if po.Maxtokens == 0 {
+		po.Maxtokens = 99999999
 	}
-	floats := make([]float32, po.Tokens)
-	reverseCount := len(po.StopPrompts)
+	floats := make([]float32, po.Maxtokens)
+	reverseCount := len(po.StopWords)
 	reversePrompt := make([]*C.char, reverseCount)
 	var pass **C.char
-	for i, s := range po.StopPrompts {
+	for i, s := range po.StopWords {
 		cs := C.CString(s)
 		reversePrompt[i] = cs
 		pass = &reversePrompt[0]
 	}
 
-	params := C.llama_allocate_params(input, C.int(po.Seed), C.int(po.Threads), C.int(po.Tokens), C.int(po.TopK),
-		C.float(po.TopP), C.float(po.Temperature), C.float(po.Penalty), C.int(po.Repeat),
-		C.bool(po.IgnoreEOS), C.bool(po.F16KV),
-		C.int(po.Batch), C.int(po.NKeep), pass, C.int(reverseCount),
-		C.float(po.TailFreeSamplingZ), C.float(po.TypicalP), C.float(po.FrequencyPenalty), C.float(po.PresencePenalty),
-		C.int(po.Mirostat), C.float(po.MirostatETA), C.float(po.MirostatTAU), C.bool(po.PenalizeNL), C.CString(po.LogitBias),
+	params := C.llama_allocate_params(input, C.int(po.Seed), C.int(po.Threads), C.int(po.Maxtokens), C.int(po.TopK),
+		C.float(po.TopP), C.float(po.Temperature), C.float(po.RepeatPenalty), C.int(po.Repeat),
+		C.bool(po.IgnoreEOS), C.bool(po.F16),
+		C.int(po.Batch), C.int(po.Keep), pass, C.int(reverseCount),
+		C.float(tailFreeSamplingZ), C.float(typicalP), C.float(frequencyPenalty), C.float(presencePenalty),
+		C.int(po.Mirostat), C.float(po.MirostatETA), C.float(po.MirostatTAU), C.bool(penalizeNL), C.CString(logitBias),
 	)
 
 	ret := C.get_embeddings(params, l.state, (*C.float)(&floats[0]))
@@ -180,46 +125,57 @@ func (l *LLaMACpp) Embeddings(text string, opts ...PredictOption) ([]float32, er
 	return floats, nil
 }
 
-func (l *LLaMACpp) MergePayload(req *llms.OpenAIRequest) *llms.Payload {
-
-	// payload := llms.NewPayload(opt)
-	//TODO copy
+func (l *LLaMACpp) MergeModelOptions(req *llms.OpenAIRequest) *llms.ModelOptions {
+	//copy options from base config
 	m := l.options
 
 	return m.Override(req)
 
 }
 
-func (l *LLaMACpp) Predict(text string, opts ...PredictOption) (string, error) {
-	po := NewPredictOptions(opts...)
+func (l *LLaMACpp) Predict(text string, opts ...llms.ModelOption) (string, error) {
 
-	if po.TokenCallback != nil {
-		setCallback(l.state, po.TokenCallback)
+	//copy from base
+	op := l.options
+
+	for _, f := range opts {
+		f(&op)
+	}
+
+	return l.PredictWithOpts(text, &op)
+
+}
+
+func (l *LLaMACpp) PredictWithOpts(text string, opts *llms.ModelOptions) (string, error) {
+
+	if opts.TokenCallback != nil {
+		setCallback(l.state, opts.TokenCallback)
 	}
 
 	input := C.CString(text)
-	if po.Tokens == 0 {
-		po.Tokens = 99999999
+	if opts.Maxtokens == 0 {
+		opts.Maxtokens = 99999999
 	}
-	out := make([]byte, po.Tokens)
 
-	reverseCount := len(po.StopPrompts)
+	out := make([]byte, opts.Maxtokens)
+
+	reverseCount := len(opts.StopWords)
 	reversePrompt := make([]*C.char, reverseCount)
 	var pass **C.char
-	for i, s := range po.StopPrompts {
+	for i, s := range opts.StopWords {
 		cs := C.CString(s)
 		reversePrompt[i] = cs
 		pass = &reversePrompt[0]
 	}
 
-	params := C.llama_allocate_params(input, C.int(po.Seed), C.int(po.Threads), C.int(po.Tokens), C.int(po.TopK),
-		C.float(po.TopP), C.float(po.Temperature), C.float(po.Penalty), C.int(po.Repeat),
-		C.bool(po.IgnoreEOS), C.bool(po.F16KV),
-		C.int(po.Batch), C.int(po.NKeep), pass, C.int(reverseCount),
-		C.float(po.TailFreeSamplingZ), C.float(po.TypicalP), C.float(po.FrequencyPenalty), C.float(po.PresencePenalty),
-		C.int(po.Mirostat), C.float(po.MirostatETA), C.float(po.MirostatTAU), C.bool(po.PenalizeNL), C.CString(po.LogitBias),
+	params := C.llama_allocate_params(input, C.int(opts.Seed), C.int(opts.Threads), C.int(opts.Maxtokens), C.int(opts.TopK),
+		C.float(opts.TopP), C.float(opts.Temperature), C.float(opts.RepeatPenalty), C.int(opts.Repeat),
+		C.bool(opts.IgnoreEOS), C.bool(opts.F16),
+		C.int(opts.Batch), C.int(opts.Keep), pass, C.int(reverseCount),
+		C.float(tailFreeSamplingZ), C.float(typicalP), C.float(frequencyPenalty), C.float(presencePenalty),
+		C.int(opts.Mirostat), C.float(opts.MirostatETA), C.float(opts.MirostatTAU), C.bool(penalizeNL), C.CString(logitBias),
 	)
-	ret := C.llama_predict(params, l.state, (*C.char)(unsafe.Pointer(&out[0])), C.bool(po.DebugMode))
+	ret := C.llama_predict(params, l.state, (*C.char)(unsafe.Pointer(&out[0])), C.bool(opts.Debug))
 	if ret != 0 {
 		return "", fmt.Errorf("inference failed")
 	}
@@ -229,13 +185,13 @@ func (l *LLaMACpp) Predict(text string, opts ...PredictOption) (string, error) {
 	res = strings.TrimPrefix(res, text)
 	res = strings.TrimPrefix(res, "\n")
 
-	for _, s := range po.StopPrompts {
+	for _, s := range opts.StopWords {
 		res = strings.TrimRight(res, s)
 	}
 
 	C.llama_free_params(params)
 
-	if po.TokenCallback != nil {
+	if opts.TokenCallback != nil {
 		setCallback(l.state, nil)
 	}
 
@@ -291,10 +247,10 @@ func setCallback(statePtr unsafe.Pointer, callback func(string) bool) {
 
 func (l *LLaMACpp) Call(ctx context.Context, prompt string) (string, error) {
 
-	ret, err := l.Predict(prompt, Debug, WithTokenCallback(func(token string) bool {
+	ret, err := l.Predict(prompt, llms.WithTokenCallback(func(token string) bool {
 		fmt.Print(token)
 		return true
-	}), WithTokens(128), WithThreads(4), WithTopK(90), WithTopP(0.86), WithStopWords("llama"))
+	}), llms.WithMaxToken(128), llms.WithThreads(4), llms.WithTopK(90), llms.WithTopP(0.86), llms.WithStopWords("llama"))
 
 	if err != nil {
 		panic(err)

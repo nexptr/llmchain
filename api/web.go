@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"net/http"
+	"os"
 
 	"github.com/exppii/llmchain"
 	"github.com/exppii/llmchain/api/conf"
@@ -45,8 +46,14 @@ func NewAPPWithConfig(cf *conf.Config) *App {
 func (m *App) StartContext(ctx context.Context) error {
 
 	m.ctx = ctx
-	go func() {
 
+	// m.mng.Load() may be slow，in order not to block the main process，
+	// goroutine is used here, so we can use ctrl+c to terminate it
+	go func() {
+		if err := m.mng.Load(); err != nil {
+			LogE(`load model failed: `, err.Error())
+			os.Exit(1)
+		}
 		m.srv.ListenAndServe()
 
 	}()

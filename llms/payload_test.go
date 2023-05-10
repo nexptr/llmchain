@@ -5,7 +5,7 @@ import (
 )
 
 func TestNewPayload(t *testing.T) {
-	a := Payload{Name: `a`}
+	a := ModelOptions{Name: `a`}
 	b := a
 
 	b.Name = `b`

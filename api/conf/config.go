@@ -15,9 +15,6 @@ type Config struct {
 	//APIAddr , default: 0.0.0.0:8080
 	APIAddr string `yaml:"api_addr"`
 
-	//default is `./models`
-	ModelPath string `yaml:"model_path"`
-
 	//default is `./prompts/*.tmpl`
 	PromptPath string `yaml:"prompt_path"`
 
@@ -25,14 +22,13 @@ type Config struct {
 
 	LogDir string `yaml:"log_dir"`
 
-	ModelOptions map[string]llms.ModelOption `yaml:"model_options"`
+	ModelOptions map[string]llms.ModelOptions `yaml:"model_options"`
 }
 
 func defaultConfig() *Config {
 	cf := &Config{
 
 		APIAddr:    "0.0.0.0:8080",
-		ModelPath:  "./models",
 		PromptPath: "./prompts/*.tmpl",
 		LogLevel:   zapcore.InfoLevel,
 		LogDir:     "./logs",

@@ -6,13 +6,13 @@ type Callback func(token string) bool
 // LLM is a langchaingo Large Language Model.
 type LLM interface {
 
-	//ModelOptions get current LLM call options
-	MergePayload(req *OpenAIRequest) *Payload
+	//MergePayload Merge OpenAI like request to modelOptions, this func must care about multi-thread condition
+	MergeModelOptions(req *OpenAIRequest) *ModelOptions
 
 	//SupportStream if this LLM support stream
 	SupportStream() bool
 
-	InferenceFn(input string, payload *Payload, tokenCallback func(string) bool) func() (string, error)
+	InferenceFn(input string, payload *ModelOptions, tokenCallback func(string) bool) func() (string, error)
 
 	// Call(ctx context.Context, prompt string, options ...PredictOption) (string, error)
 	// Generate(ctx context.Context, prompts []string, options ...CallOption) ([]*Generation, error)
@@ -86,6 +86,7 @@ type OpenAIRequest struct {
 	F16           bool    `json:"f16" yaml:"f16"`
 	IgnoreEOS     bool    `json:"ignore_eos" yaml:"ignore_eos"`
 	RepeatPenalty float64 `json:"repeat_penalty" yaml:"repeat_penalty"`
+	Repeat        int     `json:"repeat" yaml:"repeat"`
 	Keep          int     `json:"n_keep" yaml:"n_keep"`
 
 	MirostatETA float64 `json:"mirostat_eta" yaml:"mirostat_eta"`
@@ -95,12 +96,13 @@ type OpenAIRequest struct {
 	Seed int `json:"seed" yaml:"seed"`
 }
 
-func defaultRequest(modelFile string) OpenAIRequest {
+func DefaultRequest(model string) OpenAIRequest {
 	return OpenAIRequest{
 		TopP:        0.7,
 		TopK:        80,
 		Maxtokens:   512,
 		Temperature: 0.9,
-		Model:       modelFile,
+		Model:       model,
+		F16:         true,
 	}
 }

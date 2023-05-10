@@ -4,7 +4,7 @@ import (
 	"github.com/exppii/llmchain/llms"
 )
 
-func ComputeChoices(llm llms.LLM, predInput string, payload *llms.Payload, cb func(string, *[]Choice), tokenCallback func(string) bool) ([]Choice, error) {
+func ComputeChoices(llm llms.LLM, predInput string, payload *llms.ModelOptions, cb func(string, *[]Choice), tokenCallback func(string) bool) ([]Choice, error) {
 	result := []Choice{}
 
 	n := payload.N
@@ -31,7 +31,7 @@ func ComputeChoices(llm llms.LLM, predInput string, payload *llms.Payload, cb fu
 	return result, nil
 }
 
-func LLMInference(llm llms.LLM, predInput string, payload *llms.Payload, tokenCallback func(string) bool) func() (string, error) {
+func LLMInference(llm llms.LLM, predInput string, payload *llms.ModelOptions, tokenCallback func(string) bool) func() (string, error) {
 
 	// get the model function to call for the result
 	fn := llm.InferenceFn(predInput, payload, tokenCallback)
