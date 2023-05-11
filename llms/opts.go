@@ -2,6 +2,8 @@ package llms
 
 import (
 	"encoding/json"
+	"fmt"
+	"strings"
 
 	"github.com/exppii/llmchain/prompts"
 )
@@ -23,7 +25,7 @@ type ModelOptions struct {
 	Parts int  `yaml:"parts"`
 	MLock bool `yaml:"mlock"`
 
-	Threads        int                    `yaml:"threads"`
+	Threads        int                    `yaml:"threads" json:"threads"`
 	Debug          bool                   `yaml:"debug"`
 	Roles          map[string]string      `yaml:"roles"`
 	Embeddings     bool                   `yaml:"embeddings"`
@@ -34,14 +36,83 @@ type ModelOptions struct {
 	TokenCallback func(string) bool `yaml:"-" json:"-"`
 }
 
-func DefaultModelOptions() ModelOptions {
+func (m *ModelOptions) Dump() string {
+	j, _ := json.Marshal(m)
+	return string(j)
+}
 
-	return ModelOptions{
-		// F16:         true,
-		Debug:       false,
-		Threads:     4,
-		ContextSize: 512,
+func (m *ModelOptions) BuildOpts() []ModelOption {
+
+	// Generate the prediction using the language model
+	option := []ModelOption{}
+
+	if m.Temperature != 0 {
+		option = append(option, WithTemperature(m.Temperature))
 	}
+
+	if m.TopP != 0 {
+		option = append(option, WithTopP(m.TopP))
+	}
+
+	if m.TopK != 0 {
+		option = append(option, WithTopK(m.TopK))
+	}
+
+	if m.Maxtokens != 0 {
+		option = append(option, WithMaxToken(m.Maxtokens))
+	}
+
+	if m.Threads != 0 {
+		option = append(option, WithThreads(m.Threads))
+	}
+
+	if m.Mirostat != 0 {
+		option = append(option, WithMirostat(m.Mirostat))
+	}
+
+	if m.MirostatETA != 0 {
+		option = append(option, WithMirostatETA(m.MirostatETA))
+	}
+
+	if m.MirostatTAU != 0 {
+		option = append(option, WithMirostatTAU(m.MirostatTAU))
+	}
+
+	if m.Debug {
+		option = append(option, Debug)
+	}
+
+	option = append(option, WithStopWords(m.StopWords...))
+
+	if m.RepeatPenalty != 0 {
+		option = append(option, WithPenalty(m.RepeatPenalty))
+	}
+
+	if m.Keep != 0 {
+		option = append(option, WithKeep(m.Keep))
+	}
+
+	if m.Batch != 0 {
+		option = append(option, WithBatch(m.Batch))
+	}
+
+	if m.F16 {
+		option = append(option, EnableF16KV)
+	}
+
+	if m.IgnoreEOS {
+		option = append(option, IgnoreEOS)
+	}
+
+	if m.Seed != 0 {
+		option = append(option, WithSeed(m.Seed))
+	}
+
+	if m.TemplateConfig.Completion != `` || m.TemplateConfig.Chat != `` || m.TemplateConfig.Edit != `` {
+		option = append(option, WithTemplateConfig(m.TemplateConfig))
+	}
+
+	return option
 
 }
 
@@ -62,6 +133,13 @@ var EnableF16Memory ModelOption = func(p *ModelOptions) { p.F16 = true }
 func WithContext(c int) ModelOption {
 	return func(p *ModelOptions) {
 		p.ContextSize = c
+	}
+}
+
+// WithContext sets the context size.
+func WithTemplateConfig(c prompts.TemplateConfig) ModelOption {
+	return func(p *ModelOptions) {
+		p.TemplateConfig = c
 	}
 }
 
@@ -227,6 +305,7 @@ func WithMirostatTAU(mt float64) ModelOption {
 func (m *ModelOptions) Override(input *OpenAIRequest) *ModelOptions {
 
 	m.N = input.N
+	m.Messages = input.Messages
 
 	if input.Echo {
 		m.Echo = input.Echo
@@ -242,7 +321,7 @@ func (m *ModelOptions) Override(input *OpenAIRequest) *ModelOptions {
 		m.Temperature = input.Temperature
 	}
 
-	if input.Maxtokens != 0 {
+	if input.Maxtokens != 0 && input.Maxtokens < m.Maxtokens {
 		m.Maxtokens = input.Maxtokens
 	}
 
@@ -318,6 +397,7 @@ func (m *ModelOptions) Override(input *OpenAIRequest) *ModelOptions {
 			}
 		}
 	}
+
 	return m
 }
 
@@ -329,10 +409,6 @@ func (m *ModelOptions) TemplatePromptStrings(t *prompts.Template) ([]string, err
 	if m.TemplateConfig.Completion != "" {
 		templateFile = m.TemplateConfig.Completion
 	}
-
-	jm, _ := json.Marshal(m)
-
-	println(`templateFile`, string(jm))
 
 	templatedInputs := []string{}
 
@@ -349,5 +425,32 @@ func (m *ModelOptions) TemplatePromptStrings(t *prompts.Template) ([]string, err
 	}
 
 	return templatedInputs, nil
+
+}
+
+func (m *ModelOptions) TemplateMessage(t *prompts.Template) (string, error) {
+
+	mess := []string{}
+	for _, i := range m.Messages {
+		r := m.Roles[i.Role]
+		if r == "" {
+			r = i.Role
+		}
+
+		content := fmt.Sprint(r, " ", i.Content)
+		mess = append(mess, content)
+	}
+
+	predInput := strings.Join(mess, "\n")
+
+	templateFile := m.Model
+
+	if m.TemplateConfig.Completion != "" {
+		templateFile = m.TemplateConfig.Completion
+	}
+
+	return t.Render(templateFile, struct {
+		Input string
+	}{Input: predInput})
 
 }

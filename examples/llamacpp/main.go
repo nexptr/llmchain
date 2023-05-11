@@ -39,7 +39,7 @@ func main() {
 
 	ctx := context.TODO()
 
-	completion, err := llm.Call(ctx, "How many sides does a square have?")
+	completion, err := llm.Call(ctx, "how many days a week have?")
 
 	if err != nil {
 		log.Fatal(err)

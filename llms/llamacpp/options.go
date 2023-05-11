@@ -1,6 +1,10 @@
 package llamacpp
 
-import "github.com/exppii/llmchain/llms"
+import (
+	"encoding/json"
+
+	"github.com/exppii/llmchain/llms"
+)
 
 func defaultLLamaModelOptions(opts ...llms.ModelOption) llms.ModelOptions {
 
@@ -19,8 +23,8 @@ func defaultLLamaModelOptions(opts ...llms.ModelOption) llms.ModelOptions {
 			Mirostat:      0,
 			Batch:         8, //this field must no zero
 		},
-		StopWords: []string{`llama`},
-		// Debug:       true,
+		StopWords:   []string{`llama`},
+		Debug:       true,
 		ContextSize: 512,
 		MLock:       false,
 		Embeddings:  false,
@@ -30,6 +34,9 @@ func defaultLLamaModelOptions(opts ...llms.ModelOption) llms.ModelOptions {
 	for _, opt := range opts {
 		opt(&m)
 	}
+
+	j, _ := json.Marshal(&m)
+	println(`after load: `, string(j))
 
 	return m
 

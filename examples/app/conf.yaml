@@ -16,7 +16,8 @@ model_options:
   parameters:
     top_p: 80
     top_k: 0.9
-    temperature: 0.1
+    temperature: 0.7
+    max_tokens: 128
   context_size: 10
   stopwords:
   - "HUMAN:"

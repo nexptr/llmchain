@@ -4,7 +4,7 @@ import (
 	"github.com/exppii/llmchain/llms"
 )
 
-func ComputeChoices(llm llms.LLM, predInput string, payload *llms.ModelOptions, cb func(string, *[]Choice), tokenCallback func(string) bool) ([]Choice, error) {
+func ComputeChoices(llm llms.LLM, predInput string, payload *llms.ModelOptions, cb func(string, *[]Choice)) ([]Choice, error) {
 	result := []Choice{}
 
 	n := payload.N
@@ -14,7 +14,7 @@ func ComputeChoices(llm llms.LLM, predInput string, payload *llms.ModelOptions, 
 	}
 
 	// get the model function to call for the result
-	predFunc := LLMInference(llm, predInput, payload, tokenCallback)
+	predFunc := LLMInference(llm, predInput, payload)
 
 	for i := 0; i < n; i++ {
 		prediction, err := predFunc()
@@ -24,35 +24,22 @@ func ComputeChoices(llm llms.LLM, predInput string, payload *llms.ModelOptions, 
 
 		// prediction = Finetune(*config, predInput, prediction)
 		cb(prediction, &result)
-
 		//result = append(result, Choice{Text: prediction})
 
 	}
 	return result, nil
 }
 
-func LLMInference(llm llms.LLM, predInput string, payload *llms.ModelOptions, tokenCallback func(string) bool) func() (string, error) {
+func LLMInference(llm llms.LLM, predInput string, payload *llms.ModelOptions) func() (string, error) {
 
 	// get the model function to call for the result
-	fn := llm.InferenceFn(predInput, payload, tokenCallback)
+	fn := llm.InferenceFn(predInput, payload)
 
 	return func() (string, error) {
-		// This is still needed, see: https://github.com/ggerganov/llama.cpp/discussions/784
-		// mutexMap.Lock()
-		// l, ok := mutexes[modelFile]
-		// if !ok {
-		// 	m := &sync.Mutex{}
-		// 	mutexes[modelFile] = m
-		// 	l = m
-		// }
-		// mutexMap.Unlock()
-		// l.Lock()
-		// defer l.Unlock()
-		//TODO multithread lock
 
 		res, err := fn()
-		if tokenCallback != nil && !llm.SupportStream() {
-			tokenCallback(res)
+		if payload.TokenCallback != nil && !llm.SupportStream() {
+			payload.TokenCallback(res)
 		}
 		return res, err
 	}

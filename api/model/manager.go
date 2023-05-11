@@ -101,7 +101,7 @@ func (m *Manager) ListModels() []string {
 
 func (m *Manager) LoadLLaMACpp(opts llms.ModelOptions) (*llamacpp.LLaMACpp, error) {
 	log.I(`loading model: `, opts.Model, ` with path: `, opts.ModelPath, `...`)
-	return llamacpp.New(opts.ModelPath)
+	return llamacpp.New(opts.ModelPath, opts.BuildOpts()...)
 
 }
 

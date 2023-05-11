@@ -34,8 +34,9 @@ curl http://localhost:8080/v1/models
 
 curl http://localhost:8080/v1/completions -H "Content-Type: application/json" -d '{
      "model": "ggml-llama-7b",            
-     "prompt": "A long time ago in a galaxy far, far away",
-     "temperature": 0.7
+     "prompt": "how many days a week",
+     "temperature": 0.7,
+     "max_tokens": 256
    }'
 
 ```

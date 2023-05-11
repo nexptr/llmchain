@@ -28,7 +28,7 @@ type LLaMACpp struct {
 	state      unsafe.Pointer
 
 	// This is still needed, see: https://github.com/ggerganov/llama.cpp/discussions/784
-	mu sync.Mutex
+	sync.Mutex
 }
 
 var _ llms.LLM = &LLaMACpp{}
@@ -68,19 +68,14 @@ func (l *LLaMACpp) SupportStream() bool {
 func (l *LLaMACpp) Name() string {
 	return l.options.Name
 }
-func (l *LLaMACpp) InferenceFn(input string, predict *llms.ModelOptions, tokenCallback func(string) bool) func() (string, error) {
+func (l *LLaMACpp) InferenceFn(input string, predict *llms.ModelOptions) func() (string, error) {
 
 	return func() (string, error) {
-
-		if tokenCallback != nil {
-			l.SetTokenCallback(tokenCallback)
-		}
 
 		str, er := l.PredictWithOpts(input, predict)
 		// Seems that if we don't free the callback explicitly we leave functions registered (that might try to send on closed channels)
 		// For instance otherwise the API returns: {"error":{"code":500,"message":"send on closed channel","type":""}}
 		// after a stream event has occurred
-		l.SetTokenCallback(nil)
 		return str, er
 	}
 
@@ -152,7 +147,12 @@ func (l *LLaMACpp) Predict(text string, opts ...llms.ModelOption) (string, error
 
 func (l *LLaMACpp) PredictWithOpts(text string, opts *llms.ModelOptions) (string, error) {
 
+	// This is still needed, see: https://github.com/ggerganov/llama.cpp/discussions/784
+	l.Lock()
+	defer l.Unlock()
+
 	if opts.TokenCallback != nil {
+		println(`update TokenCallback`)
 		setCallback(l.state, opts.TokenCallback)
 	}
 

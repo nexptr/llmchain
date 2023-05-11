@@ -1,6 +1,8 @@
 // Package llms defines the types for LLMs.
 package llms
 
+import "encoding/json"
+
 type Callback func(token string) bool
 
 // LLM is a langchaingo Large Language Model.
@@ -13,7 +15,7 @@ type LLM interface {
 	//SupportStream if this LLM support stream
 	SupportStream() bool
 
-	InferenceFn(input string, payload *ModelOptions, tokenCallback func(string) bool) func() (string, error)
+	InferenceFn(input string, payload *ModelOptions) func() (string, error)
 
 	// Call(ctx context.Context, prompt string, options ...PredictOption) (string, error)
 	// Generate(ctx context.Context, prompts []string, options ...CallOption) ([]*Generation, error)
@@ -95,6 +97,11 @@ type OpenAIRequest struct {
 	Mirostat    int     `json:"mirostat" yaml:"mirostat"`
 
 	Seed int `json:"seed" yaml:"seed"`
+}
+
+func (m *OpenAIRequest) Dump() string {
+	j, _ := json.Marshal(m)
+	return string(j)
 }
 
 func DefaultRequest(model string) OpenAIRequest {
