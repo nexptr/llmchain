@@ -24,8 +24,6 @@ func chatTokenCallback(model string, responses chan OpenAIResponse) llms.Callbac
 			Object:  "chat.completion.chunk",
 		}
 
-		log.D("Sending goroutine: ", token)
-
 		responses <- resp
 		return true
 
@@ -36,7 +34,6 @@ func chatTokenCallback(model string, responses chan OpenAIResponse) llms.Callbac
 func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 
 	process := func(llm llms.LLM, s string, opts *llms.ModelOptions, responses chan OpenAIResponse) {
-
 		ComputeChoices(llm, s, opts, func(s string, c *[]Choice) {})
 		close(responses)
 	}
@@ -51,11 +48,11 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 			return
 		}
 
-		log.D("input: ", input.Dump())
+		log.D("input: ", input.String())
 
-		// if input.Model == `gpt-3.5-turbo` {
-		// 	input.Model = `ggml-llama-7b`
-		// }
+		if input.Model == `gpt-3.5-turbo` {
+			input.Model = `ggml-llama-7b`
+		}
 
 		llm, err := manager.GetModel(input.Model)
 
@@ -69,7 +66,7 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 
 		payload := llm.MergeModelOptions(input)
 
-		log.D(`current payload: `, payload.Dump())
+		log.D(`current payload: `, payload.String())
 
 		templatedInput, err := payload.TemplateMessage(manager.GetPrompt())
 
@@ -101,16 +98,17 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 
 			c.Stream(func(w io.Writer) bool {
 
-				for ev := range responses {
+				ev, ok := <-responses
+
+				if ok {
 					var buf bytes.Buffer
 					enc := json.NewEncoder(&buf)
 					enc.Encode(ev)
 					io.WriteString(w, "event: data\n\n")
-					// io.Wri
 					io.WriteString(w, fmt.Sprintf("data: %s\n\n", buf.String()))
-					log.D("Sending chunk: ", buf.String())
-					// w.Flush()
 
+					//continue
+					return true
 				}
 
 				io.WriteString(w, "event: data\n\n")
@@ -119,13 +117,17 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 					Model:   input.Model, // we have to return what the user sent here, due to OpenAI spec.
 					Choices: []Choice{{FinishReason: "stop"}},
 				}
-				respData, _ := json.Marshal(resp)
+				respData := resp.String()
 
-				io.WriteString(w, fmt.Sprintf("data: %s\n\n", respData))
-				// w.Flush()
-				return true
+				io.WriteString(w, fmt.Sprintf("data: %s\n\n", resp.String()))
+				log.D("Sending chunk: ", respData)
+				//close stream
+				return false
 
 			})
+
+			log.D(`finish chat...`)
+			return
 
 		}
 
@@ -146,9 +148,6 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 			Choices: result,
 			Object:  "text_completion",
 		}
-
-		// jsonResult, _ := json.Marshal(resp)
-		// log.Debug().Msgf("Response: %s", jsonResult)
 
 		// Return the prediction in the response body
 		c.JSON(http.StatusOK, resp)
@@ -187,7 +186,7 @@ func completionEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 		}
 
 		payload := llm.MergeModelOptions(input)
-		log.D(`current payload: `, payload.Dump())
+		log.D(`current payload: `, payload.String())
 		templatedInputs, err := payload.TemplatePromptStrings(manager.GetPrompt())
 		log.D(`current templated inputs: `, strings.Join(templatedInputs, `,`))
 		if err != nil {

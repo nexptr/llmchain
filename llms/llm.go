@@ -7,7 +7,11 @@ type Callback func(token string) bool
 
 // LLM is a langchaingo Large Language Model.
 type LLM interface {
+	//Name return LLM Name
 	Name() string
+
+	//Free free model
+	Free()
 
 	//MergePayload Merge OpenAI like request to modelOptions, this func must care about multi-thread condition
 	MergeModelOptions(req *OpenAIRequest) *ModelOptions
@@ -30,6 +34,11 @@ type OpenAIResponse struct {
 	Data    []Item   `json:"data,omitempty"`
 
 	Usage OpenAIUsage `json:"usage"`
+}
+
+func (m *OpenAIResponse) String() string {
+	j, _ := json.Marshal(m)
+	return string(j)
 }
 
 type OpenAIUsage struct {
@@ -99,7 +108,7 @@ type OpenAIRequest struct {
 	Seed int `json:"seed" yaml:"seed"`
 }
 
-func (m *OpenAIRequest) Dump() string {
+func (m *OpenAIRequest) String() string {
 	j, _ := json.Marshal(m)
 	return string(j)
 }

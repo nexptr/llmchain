@@ -36,7 +36,7 @@ type ModelOptions struct {
 	TokenCallback func(string) bool `yaml:"-" json:"-"`
 }
 
-func (m *ModelOptions) Dump() string {
+func (m *ModelOptions) String() string {
 	j, _ := json.Marshal(m)
 	return string(j)
 }

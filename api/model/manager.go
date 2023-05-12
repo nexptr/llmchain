@@ -68,7 +68,12 @@ func (m *Manager) Load() error {
 
 // Free clean all model in memory
 func (m *Manager) Free() {
-	//TODO free all model
+
+	for _, llm := range m.loadedModels {
+		log.I(`free model: `, llm.Name())
+		llm.Free()
+	}
+
 }
 
 func (m *Manager) GetModel(modelName string) (llms.LLM, error) {
@@ -109,32 +114,3 @@ func (m *Manager) LoadOpenAI(modelName string, opts ...openai.ModelOption) (*ope
 
 	return nil, fmt.Errorf("openai llm todo")
 }
-
-// func (m *Manager) GreedyLoad(modelFile string, llamaOpts []llamacpp.ModelOption, threads uint32) (llms.LLM, error) {
-
-// 	model, exists := m.loadedModels[modelFile]
-// 	if exists {
-// 		// muModels.Unlock()
-// 		return model, nil
-// 	}
-
-// 	//try
-
-// 	if model, err := m.LoadLLaMACpp(modelFile, llamaOpts...); err == nil {
-// 		// updateModels(model)
-// 		return model, nil
-// 	} else {
-// 		fmt.Printf(`could not load llama model: `, err.Error())
-// 	}
-
-// 	if _, err := m.LoadOpenAI(modelFile); err == nil {
-// 		// updateModels(model)
-// 		//TODO
-// 		// return model, nil
-// 		return nil, fmt.Errorf("no avail  model - all backends returned")
-// 	} else {
-// 		fmt.Printf(`could not load openai model: `, err.Error())
-// 	}
-
-// 	return nil, fmt.Errorf("no avail  model - all backends returned")
-// }

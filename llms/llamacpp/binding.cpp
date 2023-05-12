@@ -1,4 +1,3 @@
-// #include "./llama.cpp/examples/common.h"
 #include "common.h"
 #include "llama.h"
 #include "binding.h"
@@ -47,9 +46,6 @@ int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings)
 
     std::mt19937 rng(params.seed);
 
-    // Add a space in front of the first character to match OG llama tokenizer behavior
-    params.prompt.insert(0, 1, ' ');
-
     int n_past = 0;
 
     // Add a space in front of the first character to match OG llama tokenizer behavior
@@ -80,6 +76,27 @@ int get_embeddings(void *params_ptr, void *state_pr, float *res_embeddings)
     }
 
     return 0;
+}
+
+int get_token_embeddings(void *params_ptr, void *state_pr, int *tokens, int tokenSize, float *res_embeddings)
+{
+    gpt_params *params_p = (gpt_params *)params_ptr;
+    llama_context *ctx = (llama_context *)state_pr;
+    gpt_params params = *params_p;
+
+    for (int i = 0; i < tokenSize; i++)
+    {
+        auto token_str = llama_token_to_str(ctx, tokens[i]);
+        if (token_str == nullptr)
+        {
+            continue;
+        }
+        std::vector<std::string> my_vector;
+        std::string str_token(token_str); // create a new std::string from the char*
+        params_p->prompt += str_token;
+    }
+
+    return get_embeddings(params_ptr, state_pr, res_embeddings);
 }
 
 int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug)
@@ -137,7 +154,7 @@ int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug)
             {
                 const int n_left = n_past - params.n_keep;
 
-                n_past = params.n_keep;
+                n_past = std::max(1, params.n_keep);
 
                 // insert n_left/2 tokens at the start of embd from last_n_tokens
                 embd.insert(embd.begin(), last_n_tokens.begin() + n_ctx - n_left / 2 - embd.size(), last_n_tokens.end() - embd.size());
@@ -236,10 +253,10 @@ int llama_predict(void *params_ptr, void *state_pr, char *result, bool debug)
                     else
                     {
                         // Temperature sampling
-                        llama_sample_top_k(ctx, &candidates_p, top_k);
-                        llama_sample_tail_free(ctx, &candidates_p, tfs_z);
-                        llama_sample_typical(ctx, &candidates_p, typical_p);
-                        llama_sample_top_p(ctx, &candidates_p, top_p);
+                        llama_sample_top_k(ctx, &candidates_p, top_k, 1);
+                        llama_sample_tail_free(ctx, &candidates_p, tfs_z, 1);
+                        llama_sample_typical(ctx, &candidates_p, typical_p, 1);
+                        llama_sample_top_p(ctx, &candidates_p, top_p, 1);
                         llama_sample_temperature(ctx, &candidates_p, temp);
                         id = llama_sample_token(ctx, &candidates_p);
                     }

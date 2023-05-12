@@ -73,9 +73,15 @@ func (m *App) StartContext(ctx context.Context) error {
 
 // GracefulStop 退出，每个模块实现stop
 func (m *App) GracefulStop() {
+
 	if m.srv != nil {
 		log.D(`quit http server...`)
 		m.srv.Shutdown(m.ctx)
+	}
+
+	if m.mng != nil {
+		log.D(`free all loaded models...`)
+		m.mng.Free()
 	}
 
 }
