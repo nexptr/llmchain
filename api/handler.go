@@ -25,6 +25,8 @@ func chatTokenCallback(model string, responses chan OpenAIResponse) llms.Callbac
 		}
 
 		responses <- resp
+
+		log.D(`send: `, resp.String())
 		return true
 
 	}
@@ -35,7 +37,10 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 
 	process := func(llm llms.LLM, s string, opts *llms.ModelOptions, responses chan OpenAIResponse) {
 		ComputeChoices(llm, s, opts, func(s string, c *[]Choice) {})
+
 		close(responses)
+
+		log.D(`exit ComputeChoices process`)
 	}
 
 	return func(c *gin.Context) {
@@ -50,9 +55,9 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 
 		log.D("input: ", input.String())
 
-		if input.Model == `gpt-3.5-turbo` {
-			input.Model = `ggml-llama-7b`
-		}
+		// if input.Model == `gpt-3.5-turbo` {
+		// 	input.Model = `ggml-llama-7b`
+		// }
 
 		llm, err := manager.GetModel(input.Model)
 
@@ -106,7 +111,7 @@ func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 					enc.Encode(ev)
 					io.WriteString(w, "event: data\n\n")
 					io.WriteString(w, fmt.Sprintf("data: %s\n\n", buf.String()))
-
+					// log.D(`send: `, buf.String())
 					//continue
 					return true
 				}
@@ -163,6 +168,7 @@ func editEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 	}
 }
 
+// https://platform.openai.com/docs/api-reference/completions
 func completionEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
@@ -234,9 +240,87 @@ func completionEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 	}
 }
 
+// https://platform.openai.com/docs/api-reference/embeddings
 func embeddingsEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		log.I(`parse embeddings input...`)
+		input, err := parseReq(c)
+		if err != nil {
+			log.E("failed reading parameters from request: ", err.Error())
+			//todo 从中间件拿取语言类型
+			c.JSON(http.StatusBadRequest, ReqArgsErr.WithMessage(err.Error()))
+			return
+		}
 
+		llm, err := manager.GetModel(input.Model)
+
+		if err != nil {
+
+			log.E("model not found or loaded")
+
+			c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+			return
+		}
+
+		payload := llm.MergeModelOptions(input)
+
+		items := []llms.Item{}
+
+		for i, s := range payload.InputToken {
+			// get the model function to call for the result
+			embedFn, err := LLMEmbedding(llm, "", s, payload)
+
+			if err != nil {
+
+				log.E("model not found or loaded")
+
+				c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+				return
+			}
+
+			embeddings, err := embedFn()
+			if err != nil {
+
+				log.E("model not found or loaded")
+
+				c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+				return
+			}
+			items = append(items, llms.Item{Embedding: embeddings, Index: i, Object: "embedding"})
+		}
+
+		for i, s := range payload.InputStrings {
+			// get the model function to call for the result
+			embedFn, err := LLMEmbedding(llm, s, []int{}, payload)
+			if err != nil {
+
+				log.E("model not found or loaded")
+
+				c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+				return
+			}
+
+			embeddings, err := embedFn()
+			if err != nil {
+
+				log.E("model not found or loaded")
+
+				c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+				return
+			}
+			items = append(items, llms.Item{Embedding: embeddings, Index: i, Object: "embedding"})
+		}
+
+		resp := &OpenAIResponse{
+			Model:  input.Model, // we have to return what the user sent here, due to OpenAI spec.
+			Data:   items,
+			Object: "list",
+		}
+
+		log.D(`embeddings resp:`, resp.String())
+
+		// Return the prediction in the response body
+		c.JSON(http.StatusOK, resp)
 	}
 }
 

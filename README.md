@@ -57,9 +57,9 @@ Alpaca
 
 ## Short-term roadmap
 
-- [] Binary releases
-- [] docker releases
-- [] Have a webUI!
+- [ ] Binary releases
+- [ ] docker releases
+- [ ] Have a webUI!
 
 ## Acknowledgements
 

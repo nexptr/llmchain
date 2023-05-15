@@ -81,39 +81,46 @@ func (l *LLaMACpp) InferenceFn(input string, predict *llms.ModelOptions) func() 
 
 }
 
-// Embeddings
-func (l *LLaMACpp) Embeddings(text string, opts ...llms.ModelOption) ([]float32, error) {
+func (l *LLaMACpp) Embeddings(input string, tokens []int, predict *llms.ModelOptions) ([]float32, error) {
+
+	if len(tokens) > 0 {
+		return l.tokenEmbeddingsWithOpts(tokens, predict)
+	}
+
+	return l.embeddingsWithOpts(input, predict)
+
+}
+
+func (l *LLaMACpp) embeddingsWithOpts(text string, opts *llms.ModelOptions) ([]float32, error) {
+
 	if !l.embeddings {
 		return []float32{}, fmt.Errorf("model loaded without embeddings")
 	}
 
-	//copy from base
-	po := l.options
-
-	for _, f := range opts {
-		f(&po)
-	}
+	// This is still needed, see: https://github.com/ggerganov/llama.cpp/discussions/784
+	l.Lock()
+	defer l.Unlock()
 
 	input := C.CString(text)
-	if po.Maxtokens == 0 {
-		po.Maxtokens = 99999999
+	if opts.Maxtokens == 0 {
+		opts.Maxtokens = 99999999
 	}
-	floats := make([]float32, po.Maxtokens)
-	reverseCount := len(po.StopWords)
+	floats := make([]float32, opts.Maxtokens)
+	reverseCount := len(opts.StopWords)
 	reversePrompt := make([]*C.char, reverseCount)
 	var pass **C.char
-	for i, s := range po.StopWords {
+	for i, s := range opts.StopWords {
 		cs := C.CString(s)
 		reversePrompt[i] = cs
 		pass = &reversePrompt[0]
 	}
 
-	params := C.llama_allocate_params(input, C.int(po.Seed), C.int(po.Threads), C.int(po.Maxtokens), C.int(po.TopK),
-		C.float(po.TopP), C.float(po.Temperature), C.float(po.RepeatPenalty), C.int(po.Repeat),
-		C.bool(po.IgnoreEOS), C.bool(po.F16),
-		C.int(po.Batch), C.int(po.Keep), pass, C.int(reverseCount),
+	params := C.llama_allocate_params(input, C.int(opts.Seed), C.int(opts.Threads), C.int(opts.Maxtokens), C.int(opts.TopK),
+		C.float(opts.TopP), C.float(opts.Temperature), C.float(opts.RepeatPenalty), C.int(opts.Repeat),
+		C.bool(opts.IgnoreEOS), C.bool(opts.F16),
+		C.int(opts.Batch), C.int(opts.Keep), pass, C.int(reverseCount),
 		C.float(tailFreeSamplingZ), C.float(typicalP), C.float(frequencyPenalty), C.float(presencePenalty),
-		C.int(po.Mirostat), C.float(po.MirostatETA), C.float(po.MirostatTAU), C.bool(penalizeNL), C.CString(logitBias),
+		C.int(opts.Mirostat), C.float(opts.MirostatETA), C.float(opts.MirostatTAU), C.bool(penalizeNL), C.CString(logitBias),
 	)
 
 	ret := C.get_embeddings(params, l.state, (*C.float)(&floats[0]))
@@ -121,6 +128,58 @@ func (l *LLaMACpp) Embeddings(text string, opts ...llms.ModelOption) ([]float32,
 		return floats, fmt.Errorf("embedding inference failed")
 	}
 
+	return floats, nil
+
+}
+
+// Embeddings
+func (l *LLaMACpp) embeddingsInput(text string, opts ...llms.ModelOption) ([]float32, error) {
+
+	//copy from base
+	op := l.options
+
+	for _, f := range opts {
+		f(&op)
+	}
+
+	return l.embeddingsWithOpts(text, &op)
+
+}
+
+// Token Embeddings
+func (l *LLaMACpp) tokenEmbeddingsWithOpts(tokens []int, opts *llms.ModelOptions) ([]float32, error) {
+	if !l.embeddings {
+		return []float32{}, fmt.Errorf("model loaded without embeddings")
+	}
+
+	l.Lock()
+	defer l.Unlock()
+
+	outSize := opts.Maxtokens
+	if opts.Maxtokens == 0 {
+		outSize = 99999999
+	}
+
+	floats := make([]float32, outSize)
+
+	myArray := (*C.int)(C.malloc(C.size_t(len(tokens)) * C.sizeof_int))
+
+	// Copy the values from the Go slice to the C array
+	for i, v := range tokens {
+		(*[1<<31 - 1]int32)(unsafe.Pointer(myArray))[i] = int32(v)
+	}
+
+	params := C.llama_allocate_params(C.CString(""), C.int(opts.Seed), C.int(opts.Threads), C.int(opts.Maxtokens), C.int(opts.TopK),
+		C.float(opts.TopP), C.float(opts.Temperature), C.float(opts.RepeatPenalty), C.int(opts.Repeat),
+		C.bool(opts.IgnoreEOS), C.bool(opts.F16),
+		C.int(opts.Batch), C.int(opts.Keep), nil, C.int(0),
+		C.float(tailFreeSamplingZ), C.float(typicalP), C.float(frequencyPenalty), C.float(presencePenalty),
+		C.int(opts.Mirostat), C.float(opts.MirostatETA), C.float(opts.MirostatTAU), C.bool(penalizeNL), C.CString(logitBias),
+	)
+	ret := C.get_token_embeddings(params, l.state, myArray, C.int(len(tokens)), (*C.float)(&floats[0]))
+	if ret != 0 {
+		return floats, fmt.Errorf("embedding inference failed")
+	}
 	return floats, nil
 }
 
@@ -259,7 +318,7 @@ func (l *LLaMACpp) Call(ctx context.Context, prompt string) (string, error) {
 	if err != nil {
 		panic(err)
 	}
-	embeds, err := l.Embeddings(prompt)
+	embeds, err := l.embeddingsInput(prompt)
 	if err != nil {
 		fmt.Printf("Embeddings: error %s \n", err.Error())
 	}

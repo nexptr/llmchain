@@ -13,14 +13,15 @@ type LLM interface {
 	//Free free model
 	Free()
 
-	//MergePayload Merge OpenAI like request to modelOptions, this func must care about multi-thread condition
-	MergeModelOptions(req *OpenAIRequest) *ModelOptions
-
 	//SupportStream if this LLM support stream
 	SupportStream() bool
 
+	//MergePayload Merge OpenAI like request to modelOptions, this func must care about multi-thread condition
+	MergeModelOptions(req *OpenAIRequest) *ModelOptions
+
 	InferenceFn(input string, payload *ModelOptions) func() (string, error)
 
+	Embeddings(input string, tokens []int, payload *ModelOptions) ([]float32, error)
 	// Call(ctx context.Context, prompt string, options ...PredictOption) (string, error)
 	// Generate(ctx context.Context, prompts []string, options ...CallOption) ([]*Generation, error)
 }

@@ -32,6 +32,7 @@ type ModelOptions struct {
 	TemplateConfig prompts.TemplateConfig `yaml:"template"`
 
 	PromptStrings, InputStrings []string
+	InputToken                  [][]int
 
 	TokenCallback func(string) bool `yaml:"-" json:"-"`
 }
@@ -381,8 +382,15 @@ func (m *ModelOptions) Override(input *OpenAIRequest) *ModelOptions {
 		}
 	case []interface{}:
 		for _, pp := range inputs {
-			if s, ok := pp.(string); ok {
-				m.InputStrings = append(m.InputStrings, s)
+			switch i := pp.(type) {
+			case string:
+				m.InputStrings = append(m.InputStrings, i)
+			case []interface{}:
+				tokens := []int{}
+				for _, ii := range i {
+					tokens = append(tokens, int(ii.(float64)))
+				}
+				m.InputToken = append(m.InputToken, tokens)
 			}
 		}
 	}
@@ -445,8 +453,8 @@ func (m *ModelOptions) TemplateMessage(t *prompts.Template) (string, error) {
 
 	templateFile := m.Model
 
-	if m.TemplateConfig.Completion != "" {
-		templateFile = m.TemplateConfig.Completion
+	if m.TemplateConfig.Chat != "" {
+		templateFile = m.TemplateConfig.Chat
 	}
 
 	return t.Render(templateFile, struct {
