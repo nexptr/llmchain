@@ -2,15 +2,15 @@ package api
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
-	"strings"
 
+	"github.com/exppii/llmchain"
 	"github.com/exppii/llmchain/api/log"
 	"github.com/exppii/llmchain/api/model"
-	"github.com/exppii/llmchain/llms"
 	"github.com/gin-gonic/gin"
 )
 
@@ -173,64 +173,37 @@ func completionEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 	return func(c *gin.Context) {
 
 		log.I(`parse input...`)
-		input, err := parseReq(c)
-		if err != nil {
+		input := &llmchain.CompletionRequest{}
+
+		if err := c.Bind(input); err != nil {
+			// return nil, fmt.Errorf("failed reading parameters from request: ", err.Error())
 			log.E("failed reading parameters from request: ", err.Error())
 			//todo 从中间件拿取语言类型
 			c.JSON(http.StatusBadRequest, ReqArgsErr.WithMessage(err.Error()))
 			return
 		}
 
-		llm, err := manager.GetModel(input.Model)
+		log.D(`current input:`, input.String())
+
+		llm, err := manager.LLMChain(input.Model, input.Langchain)
 
 		if err != nil {
 
-			log.E("model not found or loaded")
+			log.E("model not found or loaded:", err)
 
 			c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
 			return
 		}
 
-		payload := llm.MergeModelOptions(input)
-		log.D(`current payload: `, payload.String())
-		templatedInputs, err := payload.TemplatePromptStrings(manager.GetPrompt())
-		log.D(`current templated inputs: `, strings.Join(templatedInputs, `,`))
+		resp, err := llm.Completion(context.TODO(), input)
+
 		if err != nil {
 
-			log.E("err when template input data: ", err.Error())
-			//TODO
+			log.E("model not found or loaded:", err)
+
 			c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
 			return
 		}
-
-		fn := func(s string, c *[]Choice) { *c = append(*c, Choice{Text: s}) }
-
-		payload.TokenCallback = func(s string) bool {
-			print(s)
-			return true
-		}
-
-		var result []Choice
-		for _, i := range templatedInputs {
-			log.D(`compute choices for inputs: `, i)
-			r, err := ComputeChoices(llm, i, payload, fn)
-			if err != nil {
-
-				log.E(`error when compute choices: `, err.Error())
-				//TODO
-				c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
-				return
-			}
-			log.D(`got compute choices result: `, r)
-			result = append(result, r...)
-		}
-
-		resp := &OpenAIResponse{
-			Model:   input.Model, // we have to return what the user sent here, due to OpenAI spec.
-			Choices: result,
-			Object:  "text_completion",
-		}
-
 		// jsonResult, _ := json.Marshal(resp)
 		// log.Debug().Msgf("Response: %s", jsonResult)
 
@@ -348,14 +321,118 @@ func listModelsHandler(manager *model.Manager) gin.HandlerFunc {
 	}
 }
 
-// parseReq parse openai format req
-func parseReq(c *gin.Context) (*OpenAIRequest, error) {
+func chatCallback(resp chan llmchain.ChatResponse, done chan error) llmchain.SreamCallBack {
+	return func(r llmchain.ChatResponse, d bool, e error) {
+		if d {
+			done <- e
+		} else {
+			resp <- r
+		}
+	}
+}
 
-	input := &OpenAIRequest{}
+func chatEndpointHandler(manager *model.Manager) gin.HandlerFunc {
 
-	if err := c.Bind(input); err != nil {
-		return nil, fmt.Errorf("failed reading parameters from request: ", err.Error())
+	return func(c *gin.Context) {
+
+		input := &llmchain.ChatRequest{}
+
+		if err := c.Bind(input); err != nil {
+			// return nil, fmt.Errorf("failed reading parameters from request: ", err.Error())
+			log.E("failed reading parameters from request: ", err.Error())
+			//todo 从中间件拿取语言类型
+			c.JSON(http.StatusBadRequest, ReqArgsErr.WithMessage(err.Error()))
+			return
+		}
+
+		log.D(`current input:`, input.String())
+
+		llm, err := manager.LLMChain(input.Model, input.Langchain)
+
+		if err != nil {
+
+			log.E("model not found or loaded:", err)
+
+			c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+			return
+		}
+
+		if input.Stream {
+
+			data := make(chan llmchain.ChatResponse)
+			done := make(chan error)
+			defer close(data)
+			defer close(done)
+
+			input.StreamCallback = chatCallback(data, done)
+
+			resp, err := llm.Chat(context.TODO(), input)
+
+			if err != nil {
+				log.E("run stream completion failed: ", err.Error(), resp.String())
+				// return resp, err
+				c.JSON(http.StatusInternalServerError, ModelNotExistsErr.WithMessage(err.Error()))
+				return
+			}
+
+			c.Header("Content-Type", "text/event-stream")
+			c.Header("Cache-Control", "no-cache")
+			c.Header("Connection", "keep-alive")
+			c.Header("Transfer-Encoding", "chunked")
+
+			c.Stream(func(w io.Writer) bool {
+
+				for {
+					select {
+					case payload := <-data:
+
+						var buf bytes.Buffer
+						enc := json.NewEncoder(&buf)
+						enc.Encode(payload)
+						io.WriteString(w, "event: data\n\n")
+						io.WriteString(w, fmt.Sprintf("data: %s\n\n", buf.String()))
+						// log.D(`send: `, buf.String())
+						//continue
+						return true
+
+						// fmt.Print(payload.Choices[0].Delta.Content)
+					case err = <-done:
+
+						io.WriteString(w, "event: data\n\n")
+
+						resp := &llmchain.ChatResponse{
+							// Model:   input.Model, // we have to return what the user sent here, due to OpenAI spec.
+							Choices: []llmchain.Choice{{FinishReason: "stop"}},
+						}
+						respData := resp.String()
+
+						io.WriteString(w, fmt.Sprintf("data: %s\n\n", resp.String()))
+						log.D("Sending chunk: ", respData)
+						//close stream
+						return false
+
+						// fmt.Print("\n")
+						// return res, err
+					}
+				}
+
+			})
+
+			log.D(`finish chat...`)
+			return
+
+		}
+
+		//completion
+		resp, err := llm.Chat(context.TODO(), input)
+
+		if err != nil {
+			log.E(`run chat without stream: `, err.Error())
+			c.JSON(http.StatusInternalServerError, ReqArgsErr.WithMessage(err.Error()))
+
+		}
+		c.JSON(http.StatusOK, resp)
 
 	}
-	return input, nil
+
 }

@@ -2,55 +2,58 @@ package prompts
 
 import (
 	"bytes"
-	"io"
-	"strings"
+	"fmt"
 	"text/template"
 )
 
-type TemplateConfig struct {
-	Completion string `json:"completion" yaml:"completion"`
-	Chat       string `json:"chat" yaml:"chat"`
-	Edit       string `json:"edit" yaml:"edit"`
-}
+type H = map[string]string
 
 type Template struct {
-	tmpl    *template.Template
-	funcMap template.FuncMap
+	tmpl      *template.Template
+	variables []string
 }
 
-// NewTemplate 创建初始化渲染类，输入参数为当前模版库路径
-func NewTemplate(path string) *Template {
+func PromptTemplate(prompt string, variables ...string) *Template {
+	t, err := New(prompt, variables...)
+	if err != nil {
+		fmt.Println(err)
+	}
+	return t
+}
 
-	p := &Template{funcMap: template.FuncMap{
-		// "CustomPortContent": CustomPortContent,
-	}}
+func New(prompt string, variables ...string) (*Template, error) {
 
-	if path == `` {
-		path = "prompts/*.tmpl"
+	tmpl, err := template.New(``).Parse(prompt)
+
+	if err != nil {
+		return nil, fmt.Errorf(`paser tmpl failed: %v`, err)
 	}
 
-	p.tmpl = template.Must(template.New("").Funcs(p.funcMap).ParseGlob(path))
+	t := &Template{
+		tmpl:      tmpl,
+		variables: variables,
+	}
 
-	return p
+	if len(t.variables) == 0 {
+		t.variables = []string{`input`}
+	}
+
+	return t, nil
 }
 
-func (p *Template) Execute(wr io.Writer, name string, data any) error {
+func (t *Template) Render(vars H) (string, error) {
 
-	// if !strings.HasSuffix(name, `.tmpl`) {
-	// 	name = name + `.tmpl`
-	// }
-
-	return p.tmpl.ExecuteTemplate(wr, name, data)
-}
-
-func (p *Template) Render(name string, data any) (string, error) {
-
-	if !strings.HasSuffix(name, `.tmpl`) {
-		name = name + `.tmpl`
+	//todo verify vars
+	for _, v := range t.variables {
+		if _, ok := vars[v]; !ok {
+			return "", fmt.Errorf(`field: '%s' not set`, v)
+		}
 	}
 
 	var buf bytes.Buffer
 
-	err := p.tmpl.ExecuteTemplate(&buf, name, data)
+	err := t.tmpl.Execute(&buf, vars)
+
 	return buf.String(), err
+
 }

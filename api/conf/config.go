@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/exppii/llmchain/llms"
+	"github.com/exppii/llmchain/llm"
 	"go.uber.org/zap/zapcore"
 	"gopkg.in/yaml.v2"
 )
@@ -15,23 +15,18 @@ type Config struct {
 	//APIAddr , default: 0.0.0.0:8080
 	APIAddr string `yaml:"api_addr"`
 
-	//default is `./prompts/*.tmpl`
-	PromptPath string `yaml:"prompt_path"`
-
 	LogLevel zapcore.Level `yaml:"log_level"`
 
 	LogDir string `yaml:"log_dir"`
 
-	ModelOptions []llms.ModelOptions `yaml:"model_options"`
+	ModelOptions []llm.ModelOptions `yaml:"model_options"`
 }
 
 func defaultConfig() *Config {
 	cf := &Config{
-
-		APIAddr:    "0.0.0.0:8080",
-		PromptPath: "./prompts/*.tmpl",
-		LogLevel:   zapcore.InfoLevel,
-		LogDir:     "./logs",
+		APIAddr:  "0.0.0.0:8080",
+		LogLevel: zapcore.InfoLevel,
+		LogDir:   "./logs",
 	}
 	return cf
 }

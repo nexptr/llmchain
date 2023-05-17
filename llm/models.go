@@ -1,20 +1,34 @@
-package llms
+package llm
 
-type ModelType int
+import (
+	"gopkg.in/yaml.v2"
+)
+
+type LLMType int
 
 const (
-	ModelUnknown  ModelType = 0   //
-	ModelOpenAI   ModelType = 100 //
-	ModelLLaMA    ModelType = 200 //
-	ModelLLaMACPP ModelType = 300 //
-	ModelGPT4All  ModelType = 400 //
+	ModelUnknown  LLMType = 0   //
+	ModelOpenAI   LLMType = 100 //
+	ModelLLaMA    LLMType = 200 //
+	ModelLLaMACPP LLMType = 300 //
+	ModelGPT4All  LLMType = 400 //
+)
+
+type ModelType = string
+
+const (
+	GPT4      ModelType = `gpt-4`         //
+	GPT4_0314 ModelType = `gpt-4-0314`    //
+	LLaMA_7B  ModelType = `ggml-llama-7b` //
+	// ModelLLaMACPP ModelType = 300               //
+	VICUNA_13B ModelType = `ggml-vicuna-13b` //
 )
 
 // modelMap store the model name -> model type maps
-var modelMap map[string]ModelType
+var modelMap map[ModelType]LLMType
 
 func init() {
-	modelMap = map[string]ModelType{
+	modelMap = map[ModelType]LLMType{
 		"gpt-4":              ModelOpenAI,
 		"gpt-4-0314":         ModelOpenAI,
 		"gpt-4-32k":          ModelOpenAI,
@@ -40,7 +54,7 @@ func init() {
 	}
 }
 
-func GetModelType(model string) ModelType {
+func GetModelType(model ModelType) LLMType {
 
 	t, ok := modelMap[model]
 
@@ -48,4 +62,19 @@ func GetModelType(model string) ModelType {
 		return t
 	}
 	return ModelUnknown
+}
+
+type ModelOptions struct {
+	Name     ModelType   `yaml:"name"`
+	Settings interface{} `yaml:"parameters"`
+}
+
+// takes interface, marshals back to []byte, then unmarshals to desired struct
+func UnmarshalPlugin(pluginIn, pluginOut interface{}) error {
+
+	b, err := yaml.Marshal(pluginIn)
+	if err != nil {
+		return err
+	}
+	return yaml.Unmarshal(b, pluginOut)
 }

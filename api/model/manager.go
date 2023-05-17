@@ -3,11 +3,13 @@ package model
 import (
 	"fmt"
 
+	"github.com/exppii/llmchain"
 	"github.com/exppii/llmchain/api/conf"
 	"github.com/exppii/llmchain/api/log"
-	"github.com/exppii/llmchain/llms"
-	"github.com/exppii/llmchain/llms/llamacpp"
-	"github.com/exppii/llmchain/llms/openai"
+	"github.com/exppii/llmchain/chain"
+	"github.com/exppii/llmchain/llm"
+	"github.com/exppii/llmchain/llm/openai"
+
 	"github.com/exppii/llmchain/prompts"
 )
 
@@ -18,20 +20,20 @@ type Manager struct {
 	//ModelPath root mode path for llms
 	ModelPath string
 
-	loadedModels map[string]llms.LLM
+	loadedModels map[string]llmchain.LLM
 
 	// promptsTemplates map[string]*template.Template
 
-	promptsTemplates *prompts.Template
+	promptsTemplates *prompts.Render
 }
 
 func NewModelManager(cf *conf.Config) *Manager {
 
 	return &Manager{
 		cf:           cf,
-		loadedModels: map[string]llms.LLM{},
+		loadedModels: map[string]llmchain.LLM{},
 
-		promptsTemplates: prompts.NewTemplate(cf.PromptPath),
+		// promptsTemplates: prompts.NewRender(cf.PromptPath),
 	}
 }
 
@@ -41,26 +43,35 @@ func (m *Manager) Load() error {
 	for _, o := range m.cf.ModelOptions {
 
 		//load
-		modeType := llms.GetModelType(o.Name)
+		modeType := llm.GetModelType(o.Name)
 
 		switch modeType {
-		case llms.ModelOpenAI:
-
-		case llms.ModelLLaMACPP:
-
-			llm, err := m.LoadLLaMACpp(o)
+		case llm.ModelOpenAI:
+			llm, err := openai.FromYaml(o)
 			if err != nil {
-
 				return err
 			}
 			m.loadedModels[o.Name] = llm
-			log.I(`loaded llama.cpp from `, o.ModelPath)
+			log.I(`loaded llama.cpp from `, o.Name)
+
+		case llm.ModelLLaMACPP:
+
+			// llm, err := m.LoadLLaMACpp(o)
+			// if err != nil {
+
+			// 	return err
+			// }
+			// m.loadedModels[o.Name] = llm
 		default:
 
 			return fmt.Errorf(`model: %s not support`, o.Name)
 		}
 
 	}
+
+	//Reg all chain
+
+	llmchain.RegChain(chain.NewBaseChatChain())
 
 	return nil
 
@@ -76,18 +87,35 @@ func (m *Manager) Free() {
 
 }
 
-func (m *Manager) GetModel(modelName string) (llms.LLM, error) {
+func (m *Manager) GetModel(modelName string) (llmchain.LLM, error) {
+	panic(`todo`)
+	// model, exists := m.loadedModels[modelName]
+	// if !exists {
+	// 	return nil, fmt.Errorf("model %s not found", modelName)
+	// }
+
+	// return model, nil
+
+}
+
+func (m *Manager) LLMChain(modelName string, chainName string) (llmchain.LLM, error) {
 
 	model, exists := m.loadedModels[modelName]
 	if !exists {
 		return nil, fmt.Errorf("model %s not found", modelName)
 	}
 
+	if c, ok := llmchain.GetChain(chainName); ok {
+		log.D(`using chain: `, chainName)
+		c.WithLLM(model)
+		return llmchain.New(model, c), nil
+	}
+
 	return model, nil
 
 }
 
-func (m *Manager) GetPrompt() *prompts.Template {
+func (m *Manager) GetPrompt() *prompts.Render {
 
 	return m.promptsTemplates
 
@@ -104,11 +132,11 @@ func (m *Manager) ListModels() []string {
 	return ret
 }
 
-func (m *Manager) LoadLLaMACpp(opts llms.ModelOptions) (*llamacpp.LLaMACpp, error) {
-	log.I(`loading model: `, opts.Model, ` with path: `, opts.ModelPath, `...`)
-	return llamacpp.New(opts.ModelPath, opts.BuildOpts()...)
+// func (m *Manager) LoadLLaMACpp(opts llm.ModelOptions) (*llamacpp.LLaMACpp, error) {
+// 	log.I(`loading model: `, opts.Model, ` with path: `, opts.ModelPath, `...`)
+// 	return llamacpp.New(opts.ModelPath, opts.BuildOpts()...)
 
-}
+// }
 
 func (m *Manager) LoadOpenAI(modelName string, opts ...openai.ModelOption) (*openai.OpenAI, error) {
 

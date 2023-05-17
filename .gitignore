@@ -1,4 +1,5 @@
 llms/llamacpp/build
+llm/llamacpp/build
 build
 *.o
 *.a

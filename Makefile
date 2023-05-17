@@ -27,7 +27,7 @@ llamacpp:
 	git submodule update --init --recursive --depth 1
 
 llamacpp/libbinding.a: llamacpp 
-	$(MAKE) -C llms/llamacpp $(GENERIC_PREFIX)libbinding.a
+	$(MAKE) -C llm/llamacpp $(GENERIC_PREFIX)libbinding.a
 
 
 app: llamacpp/libbinding.a

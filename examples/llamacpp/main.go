@@ -8,8 +8,7 @@ import (
 	"os"
 	"runtime"
 
-	"github.com/exppii/llmchain/llms"
-	"github.com/exppii/llmchain/llms/llamacpp"
+	"github.com/exppii/llmchain/llm/llamacpp"
 )
 
 var (
@@ -18,7 +17,7 @@ var (
 	modelPath string
 )
 
-// LIBRARY_PATH=./llms/llamacpp C_INCLUDE_PATH=./llms/llamacpp go run ./examples/llamacpp -m "./models/7B/ggml-model-q4_1.bin" -t 4
+// LIBRARY_PATH=./llm/llamacpp C_INCLUDE_PATH=./llm/llamacpp go run ./examples/llamacpp -m "./models/7B/ggml-model-q4_1.bin" -t 4
 func main() {
 
 	flags := flag.NewFlagSet(os.Args[0], flag.ExitOnError)
@@ -32,14 +31,14 @@ func main() {
 		os.Exit(1)
 	}
 
-	llm, err := llamacpp.New(modelPath, llms.WithContext(128), llms.WithParts(-1), llms.EnableEmbeddings)
+	llm, err := llamacpp.New(modelPath, llamacpp.WithContext(128), llamacpp.EnableEmbeddings)
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	ctx := context.TODO()
 
-	completion, err := llm.Call(ctx, "how many days a week have?")
+	completion, err := llm.Call(ctx, "USER: how many days a week have? \nASSISTANT:")
 
 	if err != nil {
 		log.Fatal(err)
