@@ -148,3 +148,11 @@ func (l *OpenAI) defaultChatRequest(prompt string) *llmchain.ChatRequest {
 		User:             "",
 	}
 }
+
+// Embeddings implements LLM
+func (l *OpenAI) Embeddings(ctx context.Context, req *llmchain.EmbeddingsRequest) (resp *llmchain.EmbeddingsResponse, err error) {
+
+	p := "/embeddings"
+	return call(ctx, l, http.MethodPost, p, req, resp, nil)
+
+}

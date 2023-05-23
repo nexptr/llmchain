@@ -2,53 +2,13 @@ package llmchain
 
 import "context"
 
-type SreamCallBack func(res ChatResponse, done bool, err error)
-
-// LLM common interface for lang model
-type LLM interface {
-
-	//Name return LLM Name
-	Name() string
-
-	//Free free model
-	Free()
-
-	Call(ctx context.Context, prompt string) (string, error)
-
-	Chat(ctx context.Context, req *ChatRequest) (ChatResponse, error)
-
-	Completion(ctx context.Context, req *CompletionRequest) (*CompletionResponse, error)
-
-	//Embeddings
-}
-
-type Chain interface {
-
-	//Name return LLM Name
-	Name() string
-	//WithLLM some langchain may using LLM for generate prompt in runtime。
-	//这里要考虑历史对话的记录问题实现
-	WithLLM(llm LLM)
-	//Prompt parse input to prompt using chain prompt template. or maybe using api,db,cached data...
-	//这里要考虑历史对话的记录问题实现
-	Prompt(args H) (string, error)
-
-	//InputPrompt using `input` as user input string
-	InputPrompt(input string) (string, error)
-
-	ChatPrompt(ctx context.Context, req *ChatRequest) (*ChatRequest, error)
-
-	CompletionPrompt(ctx context.Context, req *CompletionRequest) (*CompletionRequest, error)
-}
-
-// H is a shortcut for map[string]string
-type H = map[string]string
-
+// LLMChain 实现基本的LLMChain
 type LLMChain struct {
 	llm   LLM
 	chain Chain
 }
 
+// 这里让 LLMChain也实现LLM接口。如此，也可以把LLMChain当成是一种特殊的LLM
 var _ LLM = &LLMChain{}
 
 // New return LLMChain
@@ -59,8 +19,12 @@ func New(llm LLM, chain Chain) *LLMChain {
 }
 
 // Free implements LLM
-func (*LLMChain) Free() {
+func (l *LLMChain) Free() {
 	//do nothing
+	if l.llm != nil {
+		l.Free()
+	}
+	//TODO maybe chain also need free()
 }
 
 // Name implements LLM
@@ -72,29 +36,33 @@ func (l *LLMChain) Name() string {
 // Run Simple warp for RunCompletion,
 func (l *LLMChain) Call(ctx context.Context, input string) (string, error) {
 
-	ret := ""
+	//using chain to get prompted text
+	prompt := l.chain.Prompt(input)
 
-	prompt, err := l.chain.InputPrompt(input)
-
-	if err != nil {
-		//TODO
-		return ret, err
-	}
-
+	//then use l.llm do real call
 	return l.llm.Call(ctx, prompt)
 
 }
 
 func (l *LLMChain) Completion(ctx context.Context, req *CompletionRequest) (*CompletionResponse, error) {
 
-	r, err := l.chain.CompletionPrompt(ctx, req)
-
-	if err != nil {
-		//TODO
-		return nil, err
+	// In ChatGPT Completion Request Prompt: The prompt(s) to generate completions for, encoded as a string, array of strings, array of tokens, or array of token arrays.
+	// Note that <|endoftext|> is the document separator that the model sees during training, so if a prompt is not specified the model will generate as if from the beginning of a new document.
+	// See https://beta.openai.com/docs/api-reference/completions/create#completions/create-prompt
+	// So,Prompt may be string or []string
+	switch p := req.Prompt.(type) {
+	case string:
+		req.Prompt = l.chain.Prompt(p)
+		// req.PromptStrings = append(req.PromptStrings, l.chain.Prompt(p))
+	case []string:
+		prompts := []string{}
+		for _, pp := range p {
+			prompts = append(prompts, l.chain.Prompt(pp))
+		}
+		req.Prompt = prompts
 	}
 
-	return l.llm.Completion(ctx, r)
+	return l.llm.Completion(ctx, req)
 
 }
 
@@ -102,13 +70,20 @@ func (l *LLMChain) Completion(ctx context.Context, req *CompletionRequest) (*Com
 
 func (l *LLMChain) Chat(ctx context.Context, req *ChatRequest) (ChatResponse, error) {
 
-	//
-	r, err := l.chain.ChatPrompt(ctx, req)
+	//由于请求中间可能包括多轮对话。
+	messages, err := l.chain.ChatPrompt(ctx, req.Messages)
 
 	if err != nil {
 		//TODO
 		return ChatResponse{}, err
 	}
 
-	return l.llm.Chat(ctx, r)
+	req.Messages = messages
+
+	return l.llm.Chat(ctx, req)
+}
+
+// Embeddings implements LLM
+func (l *LLMChain) Embeddings(ctx context.Context, req *EmbeddingsRequest) (*EmbeddingsResponse, error) {
+	return l.llm.Embeddings(ctx, req)
 }

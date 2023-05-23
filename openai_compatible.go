@@ -1,6 +1,9 @@
 package llmchain
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 type ObjectType string
 
@@ -15,6 +18,8 @@ const (
 	OTFineTune        ObjectType = "fine-tune"
 	OTFineTuneEvent   ObjectType = "fine-tune-event"
 )
+
+type SreamCallBack func(res ChatResponse, done bool, err error)
 
 // ChatRequest:
 // https://platform.openai.com/docs/guides/chat/chat-completions-beta
@@ -116,8 +121,9 @@ type CompletionRequest struct {
 	// Prompt: The prompt(s) to generate completions for, encoded as a string, array of strings, array of tokens, or array of token arrays.
 	// Note that <|endoftext|> is the document separator that the model sees during training, so if a prompt is not specified the model will generate as if from the beginning of a new document.
 	// See https://beta.openai.com/docs/api-reference/completions/create#completions/create-prompt
-	Prompt []string `json:"prompt"`
+	// Prompt []string `json:"prompt"`
 
+	Prompt interface{} `json:"prompt"`
 	// MaxTokens: The maximum number of tokens to generate in the completion.
 	// The token count of your prompt plus max_tokens cannot exceed the model's context length. Most models have a context length of 2048 tokens (except for the newest models, which support 4096).
 	// See https://beta.openai.com/docs/api-reference/completions/create#completions/create-max_tokens
@@ -197,6 +203,9 @@ type CompletionRequest struct {
 
 	// Langchain using Langchain default: baseChat
 	Langchain string `json:"langchain,omitempty" yaml:"langchain"`
+
+	//prompt strings
+	PromptStrings []string `json:"-" yaml:"-"`
 }
 
 func (r *CompletionRequest) String() string {
@@ -264,4 +273,40 @@ type Item struct {
 	Embedding []float32 `json:"embedding"`
 	Index     int       `json:"index"`
 	Object    string    `json:"object,omitempty"`
+}
+
+type EmbeddingsRequest struct {
+	Model string      `json:"model"`
+	Input interface{} `json:"input"` //string or []string
+	User  string      `json:"user,omitempty"`
+}
+
+func (r *EmbeddingsRequest) Verify() error {
+	switch r.Input.(type) {
+	case string, []string:
+		return nil
+	}
+	return fmt.Errorf(`input field must be string or []string`)
+}
+
+func (r *EmbeddingsRequest) String() string {
+	j, _ := json.Marshal(r)
+	return string(j)
+}
+
+type EmbeddingsResponse struct {
+	Object string          `json:"object"`
+	Data   []EmbeddingData `json:"data"`
+	Usage  Usage           `json:"usage"`
+}
+
+func (r *EmbeddingsResponse) String() string {
+	j, _ := json.Marshal(r)
+	return string(j)
+}
+
+type EmbeddingData struct {
+	Object    string    `json:"object"`
+	Embedding []float32 `json:"embedding"`
+	Index     int       `json:"index"`
 }

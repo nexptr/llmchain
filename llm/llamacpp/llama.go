@@ -22,11 +22,11 @@ type LLaMACpp struct {
 
 	ContextSize int `yaml:"context_size"`
 	// Parts       int  `yaml:"parts"`
-	Seed       int  `json:"seed" yaml:"seed"`
-	F16        bool `json:"f16" yaml:"f16"`
-	MLock      bool `yaml:"mlock"`
-	Embeddings bool `yaml:"embeddings"`
-	NGPULayers int  `yaml:"ngpu_layers"`
+	Seed            int  `json:"seed" yaml:"seed"`
+	F16             bool `json:"f16" yaml:"f16"`
+	MLock           bool `yaml:"mlock"`
+	EnableEmbedding bool `yaml:"embeddings"`
+	NGPULayers      int  `yaml:"ngpu_layers"`
 
 	Threads int `yaml:"threads" json:"threads"`
 
@@ -202,28 +202,28 @@ func (l *LLaMACpp) Chat(ctx context.Context, req *llmchain.ChatRequest) (llmchai
 // Completion implements llmchain.LLM
 func (l *LLaMACpp) Completion(ctx context.Context, req *llmchain.CompletionRequest) (*llmchain.CompletionResponse, error) {
 
-	opts := defaultOptions().buildCompletionOpts(req)
+	// opts := defaultOptions().buildCompletionOpts(req)
 
-	n := req.N
+	// n := req.N
 
-	if req.N == 0 {
-		n = 1
-	}
+	// if req.N == 0 {
+	// 	n = 1
+	// }
 
 	var result []llmchain.Choice
-	for _, i := range req.Prompt {
-		// A model can have a "file.bin.tmpl" file associated with a prompt template prefix
+	// for _, i := range req.Prompt {
+	// 	// A model can have a "file.bin.tmpl" file associated with a prompt template prefix
 
-		r, err := l.ComputeChoices(i, n, opts, func(s string, c *[]llmchain.Choice) {
-			*c = append(*c, llmchain.Choice{Text: s})
-		})
+	// 	r, err := l.ComputeChoices(i, n, opts, func(s string, c *[]llmchain.Choice) {
+	// 		*c = append(*c, llmchain.Choice{Text: s})
+	// 	})
 
-		if err != nil {
-			return nil, err
-		}
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 
-		result = append(result, r...)
-	}
+	// 	result = append(result, r...)
+	// }
 
 	resp := &llmchain.CompletionResponse{
 		Model:   req.Model, // we have to return what the user sent here, due to OpenAI spec.
@@ -235,6 +235,15 @@ func (l *LLaMACpp) Completion(ctx context.Context, req *llmchain.CompletionReque
 	// log.Debug().Msgf("Response: %s", jsonResult)
 
 	return resp, nil
+
+}
+
+// Embeddings implements LLM
+func (l *LLaMACpp) Embeddings(ctx context.Context, req *llmchain.EmbeddingsRequest) (resp *llmchain.EmbeddingsResponse, err error) {
+
+	// p := "/embeddings"
+	// return call(ctx, l, http.MethodPost, p, req, resp, nil)
+	panic(`TODO`)
 
 }
 

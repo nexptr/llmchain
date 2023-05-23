@@ -24,7 +24,7 @@ func (l *LLaMACpp) load() error {
 
 	mPath := C.CString(l.ModelPath)
 
-	l.state = C.load_model(mPath, C.int(l.ContextSize), C.int(l.Seed), C.bool(l.F16), C.bool(l.MLock), C.bool(l.Embeddings), C.int(l.NGPULayers))
+	l.state = C.load_model(mPath, C.int(l.ContextSize), C.int(l.Seed), C.bool(l.F16), C.bool(l.MLock), C.bool(l.EnableEmbedding), C.int(l.NGPULayers))
 	if l.state == nil {
 		return fmt.Errorf("failed loading model")
 	}

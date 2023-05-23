@@ -51,7 +51,7 @@ func WithNGPULayers(c int) ModelOption {
 	}
 }
 
-var EnableEmbeddings ModelOption = func(p *LLaMACpp) { p.Embeddings = true }
+var EnableEmbeddings ModelOption = func(p *LLaMACpp) { p.EnableEmbedding = true }
 
 var EnableF16Memory ModelOption = func(p *LLaMACpp) { p.F16 = true }
 
