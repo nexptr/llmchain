@@ -1,0 +1,8 @@
+llms/llamacpp/build
+llm/llamacpp/build
+build
+*.o
+*.a
+*.bin
+*.log
+gen_server/serve/__pycache__

@@ -1,0 +1,210 @@
+from concurrent import futures
+from typing import Iterable, Optional
+import gc
+import torch
+import torch.nn.functional as F
+import grpc
+from chat_pb2 import EmbedingsMessage, EmbeddingData, EmbedingsResp, Request, Respone, ErrorCode, TokenUsage
+from chat_pb2_grpc import ChatServiceServicer, add_ChatServiceServicer_to_server
+
+
+from fastchat.model.model_adapter import (
+    load_model,
+    add_model_args,
+    get_conversation_template,
+    get_generate_stream_function,
+)
+
+from fastchat.utils import build_logger, pretty_print_semaphore, get_context_length
+
+
+import argparse
+import datetime
+import json
+
+from gen_server.serve.inference import generate_stream
+
+def generation_log(pmt: str, reply: str):
+    log_data = {"prompt": pmt, "reply": reply, "timestamp": str(datetime.datetime.now())}
+    return json.dumps(log_data, ensure_ascii=False)
+
+
+class ChatServer(ChatServiceServicer):
+    def __init__(
+            self, 
+            model_path,
+            model_names: List[str],
+            device: str,
+            num_gpus: int,
+            max_gpu_memory: str,
+            load_8bit: bool = False,
+            cpu_offloading: bool = False
+    ):
+        super().__init__(
+            model_path,
+            model_names,
+        )
+
+        self.model, self.tokenizer = load_model(
+            model_path,
+            device=device,
+            num_gpus=num_gpus,
+            max_gpu_memory=max_gpu_memory,
+            load_8bit=load_8bit,
+            cpu_offloading=cpu_offloading,
+            # gptq_config=gptq_config,
+            # awq_config=awq_config,
+        )
+        self.device = device
+        if self.tokenizer.pad_token == None:
+            self.tokenizer.pad_token = self.tokenizer.eos_token
+        self.context_len = get_context_length(self.model.config)
+        self.generate_stream_func = get_generate_stream_function(self.model, model_path)
+        # self.stream_interval = stream_interval
+
+
+        
+    def Completion(self, request: Request, context):
+        ret = Respone()
+        try:
+            for output in self.generate_stream(request, get_full=True):
+                ret.text = output.text
+                ret.error_code = output.error_code
+        except torch.cuda.OutOfMemoryError as e:
+            ret.text = f"{e}"
+            ret.error_code = ErrorCode.OutOfMemory
+            self.logger.error("Completion error: " + f"{e}")
+            gc.collect()
+            torch.cuda.empty_cache()
+        except (ValueError, RuntimeError) as e:
+            ret.text = f"{e}"
+            ret.error_code = ErrorCode.Internal
+            self.logger.error("Completion error: " + f"{e}")
+            gc.collect()
+            torch.cuda.empty_cache()
+        return ret
+        
+    def Chat(self, request: Request, context):
+        try:
+            for output in generate_stream(request, get_full=False):
+                yield output
+        except torch.cuda.OutOfMemoryError as e:
+            yield Respone(error_code=ErrorCode.OutOfMemory, text=f"{e}")
+            self.logger.error("Chat error: " + f"{e}")
+            gc.collect()
+            torch.cuda.empty_cache()
+            return
+        except (ValueError, RuntimeError) as e:
+            yield Respone(error_code=ErrorCode.Internal, text=f"{e}")
+            self.logger.error("Chat error: " + f"{e}")
+            gc.collect()
+            torch.cuda.empty_cache()
+            return
+
+    @torch.inference_mode()
+    def Embedings(self, request: EmbedingsMessage, context):
+        ret = EmbedingsResp()
+        try:
+            tokenizer = self.tokenizer
+            # is_llama = "llama" in str(
+            #     type(self.model)
+            # )  # vicuna support batch inference
+            # is_chatglm = "chatglm" in str(type(self.model))
+            # is_t5 = "t5" in str(type(self.model))
+            
+            # TODO
+            is_llama = False
+            if (self.model_type == model_loader.MODULE_TYPE_LLAMA):
+                is_llama = True
+            is_chatglm = False
+            if (self.model_type == model_loader.MODULE_TYPE_CHATGLM):
+                is_chatglm = True
+            is_t5 = False
+            if is_llama:
+                encoding = tokenizer.batch_encode_plus(
+                    request.prompt, padding=True, return_tensors="pt"
+                )
+                input_ids = encoding["input_ids"].to(self.device)
+                attention_mask = encoding["attention_mask"].to(self.device)
+                model_output = self.model(
+                    input_ids, attention_mask, output_hidden_states=True
+                )
+                data = model_output.hidden_states[-1]
+                mask = attention_mask.unsqueeze(-1).expand(data.size()).float()
+                masked_embeddings = data * mask
+                sum_embeddings = torch.sum(masked_embeddings, dim=1)
+                seq_length = torch.sum(mask, dim=1)
+                embedding = sum_embeddings / seq_length
+                normalized_embeddings = F.normalize(embedding, p=2, dim=1)
+                token_num=torch.sum(attention_mask).item()
+                elist = normalized_embeddings.tolist()
+                for e in elist:
+                    embedding_data = EmbeddingData()    
+                    embedding_data.embedding.extend(e)
+                    ret.Embeddings.append(embedding_data)
+                ret.token_num = token_num
+            else:
+                token_num = 0
+                prompt = request.prompt
+                if (len(request.prompt) == 1):
+                    prompt = request.prompt[0]
+                    
+                for text in prompt:
+                    input_ids = self.tokenizer.encode(text, return_tensors="pt").to(self.device)
+                    if is_t5:
+                        model_output = self.model(
+                            input_ids, decoder_input_ids=input_ids
+                        )
+                    else:
+                        model_output = self.model(input_ids, output_hidden_states=True)
+                    if is_chatglm:
+                        data = (model_output.hidden_states[-1].transpose(0, 1))[0]
+                    elif is_t5:
+                        data = model_output.encoder_last_hidden_state[0]
+                    else:
+                        data = model_output.hidden_states[-1][0]
+                    data = F.normalize(torch.mean(data, dim=0), p=2, dim=0)
+                    token_num += len(input_ids[0])
+                    embedding_data = EmbeddingData(embedding=data.tolist())
+                    ret.Embeddings.append(embedding_data)
+                ret.token_num = token_num
+        except torch.cuda.OutOfMemoryError as e:
+            ret.error_code = ErrorCode.OutOfMemory
+            self.logger.error("Embedings error: " + f"{e}")
+        except (ValueError, RuntimeError) as e:
+            ret.error_code = ErrorCode.Internal
+            self.logger.error("Embedings error: " + f"{e}")
+        return ret
+
+
+
+if __name__ == '__main__':
+    parser = argparse.ArgumentParser(description="Script description")
+    parser.add_argument("--model_path", type=str, help="Model path")
+    parser.add_argument(
+            "--model-names",
+            type=lambda s: s.split(","),
+            help="Optional display comma separated names",
+        )
+    parser.add_argument("--device", type=str, default="cuda", help="Device")
+    parser.add_argument("--model_type", type=str, help="Model type")
+    parser.add_argument("--rpc_port", type=str, default="50051", help="Rpc server port")
+    parser.add_argument("--log_dir", type=str, help="Logs dir")
+
+    args = parser.parse_args()
+    print(f"args: {args}")
+
+    if args.gpus:
+        if len(args.gpus.split(",")) < args.num_gpus:
+            raise ValueError(
+                f"Larger --num-gpus ({args.num_gpus}) than --gpus {args.gpus}!"
+            )
+        os.environ["CUDA_VISIBLE_DEVICES"] = args.gpus
+
+    print(args)
+    server = grpc.server(futures.ThreadPoolExecutor(max_workers=10))
+    add_ChatServiceServicer_to_server(ChatServer(args.model_path, args.model_names, device=args.device, num_gpus=args.num_gpus, max_gpu_memory=args.max_gpu_memory,  load_8bit=args.load_8bit), server)
+    server.add_insecure_port("[::]:" + args.rpc_port)
+    server.start()
+    print("Server started, listening on " + args.rpc_port + "...")
+    server.wait_for_termination()
