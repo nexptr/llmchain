@@ -137,14 +137,14 @@ func listen(res *http.Response, cb schema.SreamCallBack) {
 
 func (l *FSChat) endpoint(p string) (string, error) {
 
-	if len(l.endpoints) == 0 {
+	if len(l.Endpoints) == 0 {
 		return ``, errors.New(`无可用模型地址`)
 	}
 	// 生成随机索引
 	r := rand.New(rand.NewSource(time.Now().UnixNano()))
-	index := r.Intn(len(l.endpoints))
+	index := r.Intn(len(l.Endpoints))
 
-	return strings.Join([]string{l.endpoints[index], strings.TrimLeft(p, "/")}, "/"), nil
+	return strings.Join([]string{l.Endpoints[index], strings.TrimLeft(p, "/")}, "/"), nil
 }
 
 func (l *FSChat) build(ctx context.Context, method, p string, body interface{}) (req *http.Request, err error) {

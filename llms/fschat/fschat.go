@@ -20,10 +20,7 @@ type FSChat struct {
 
 	// BaseURL of API including the version.
 	// e.g., https://api.openai.com/v1
-	APIHost string `json:"api_host" yaml:"api_host"`
-
-	//保存APIHost字段解析后的地址
-	endpoints []string `json:"-" yaml:"-"`
+	Endpoints []string `json:"api_host" yaml:"api_host"`
 
 	// HTTPClient (optional) to proxy HTTP request.
 	// If nil, *http.DefaultClient will be used.

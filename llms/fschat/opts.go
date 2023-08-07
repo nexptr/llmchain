@@ -35,8 +35,7 @@ func WithAPIHost(o string) ModelOption {
 
 	//todo verify o
 	return func(p *FSChat) {
-		p.APIHost = o
-		p.endpoints = verifyAPIHost(p.APIHost)
+		p.Endpoints = verifyAPIHost(o)
 	}
 }
 
@@ -56,9 +55,8 @@ func WithHTTPClient(o *http.Client) ModelOption {
 
 func defaultFSChat() *FSChat {
 	return &FSChat{
-		APIHost:   DefaultVicunaAddr,
-		Model:     "vicuna-13b-v1.1",
-		endpoints: []string{DefaultVicunaAddr},
+		Model:     "vicuna-13b-v1.5-16k",
+		Endpoints: []string{DefaultVicunaAddr},
 	}
 }
 
